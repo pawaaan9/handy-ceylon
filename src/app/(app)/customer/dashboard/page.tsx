@@ -1,6 +1,7 @@
 import { CalendarClock, FileText, HardHat, MapPin, UserRound, Wrench, Zap } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { ActionTile, Meter, SectionTitle, WelcomeBanner } from "@/components/app-shell/dashboard-kit";
 import { VerificationBanner } from "@/components/app-shell/verification-banner";
@@ -11,10 +12,19 @@ import { getDefaultAddress } from "@/features/addresses/server/repository";
 import { technicianRoutes } from "@/features/auth/redirects";
 import { getApplicationStatus, requireRole } from "@/features/auth/server/dal";
 import { applicationStatusLabels } from "@/features/technicians/types";
+import { PageSkeleton } from "@/components/app-shell/page-header";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
-export default async function CustomerDashboardPage() {
+export default function CustomerDashboardPage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <CustomerDashboardPageContent />
+    </Suspense>
+  );
+}
+
+async function CustomerDashboardPageContent() {
   const user = await requireRole(["customer"], { from: "/customer/dashboard" });
   const [defaultAddress, applicationStatus] = await Promise.all([
     getDefaultAddress(user.uid),

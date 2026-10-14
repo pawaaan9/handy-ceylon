@@ -1,6 +1,7 @@
 import { ArrowRight, ClipboardList, Layers, Wrench } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { SectionTitle, StatTile, WelcomeBanner } from "@/components/app-shell/dashboard-kit";
 import { Button } from "@/components/ui/button";
@@ -9,10 +10,19 @@ import { requireRole } from "@/features/auth/server/dal";
 import { loadActiveCatalogue } from "@/features/catalogue/server/repository";
 import { countApplicationsByStatus } from "@/features/technicians/server/applications";
 import { applicationStatusLabels } from "@/features/technicians/types";
+import { PageSkeleton } from "@/components/app-shell/page-header";
 
 export const metadata: Metadata = { title: "Admin dashboard" };
 
-export default async function AdminDashboardPage() {
+export default function AdminDashboardPage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <AdminDashboardPageContent />
+    </Suspense>
+  );
+}
+
+async function AdminDashboardPageContent() {
   await requireRole(["admin"], { from: "/admin/dashboard" });
   const [counts, catalogue] = await Promise.all([
     countApplicationsByStatus(),

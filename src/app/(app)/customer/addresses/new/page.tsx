@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
-import { PageHeader, Panel } from "@/components/app-shell/page-header";
+import { PageHeader, Panel, PageSkeleton } from "@/components/app-shell/page-header";
 import { AddressForm } from "@/features/addresses/components/address-form";
 import type { AddressFormValues } from "@/features/addresses/schemas";
 import { listAddresses } from "@/features/addresses/server/repository";
@@ -9,7 +10,15 @@ import { formatLocalMobile } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Add address" };
 
-export default async function NewAddressPage() {
+export default function NewAddressPage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <NewAddressPageContent />
+    </Suspense>
+  );
+}
+
+async function NewAddressPageContent() {
   const user = await requireRole(["customer"], { from: "/customer/addresses/new" });
   const existing = await listAddresses(user.uid);
 

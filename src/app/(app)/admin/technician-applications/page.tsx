@@ -1,8 +1,9 @@
 import { ChevronRight, Inbox } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 
-import { PageHeader } from "@/components/app-shell/page-header";
+import { PageHeader, PageSkeleton } from "@/components/app-shell/page-header";
 import { requireRole } from "@/features/auth/server/dal";
 import { ApplicationStatusBadge } from "@/features/technicians/components/application-status-card";
 import { listApplications } from "@/features/technicians/server/applications";
@@ -17,7 +18,15 @@ import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Technician applications" };
 
-export default async function ApplicationsPage({ searchParams }: PageProps<"/admin/technician-applications">) {
+export default function ApplicationsPage(props: PageProps<"/admin/technician-applications">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <ApplicationsPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function ApplicationsPageContent({ searchParams }: PageProps<"/admin/technician-applications">) {
   await requireRole(["admin"], { from: "/admin/technician-applications" });
   const { status: rawStatus } = await searchParams;
   const status: TechnicianApplicationStatus = technicianApplicationStatuses.includes(

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
-import { PageHeader, Panel } from "@/components/app-shell/page-header";
+import { PageHeader, Panel, PageSkeleton } from "@/components/app-shell/page-header";
 import { AddressForm } from "@/features/addresses/components/address-form";
 import { addressIdSchema, type AddressFormValues } from "@/features/addresses/schemas";
 import { getAddress } from "@/features/addresses/server/repository";
@@ -10,7 +11,15 @@ import { formatLocalMobile } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Edit address" };
 
-export default async function EditAddressPage({ params }: PageProps<"/customer/addresses/[addressId]/edit">) {
+export default function EditAddressPage(props: PageProps<"/customer/addresses/[addressId]/edit">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <EditAddressPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function EditAddressPageContent({ params }: PageProps<"/customer/addresses/[addressId]/edit">) {
   const { addressId } = await params;
   const user = await requireRole(["customer"], { from: `/customer/addresses/${addressId}/edit` });
   const id = addressIdSchema.safeParse(addressId);

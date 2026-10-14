@@ -2,8 +2,9 @@ import { ArrowLeft, ExternalLink, FileText } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
-import { PageHeader, Panel } from "@/components/app-shell/page-header";
+import { PageHeader, Panel, PageSkeleton } from "@/components/app-shell/page-header";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ApplicationReviewForm } from "@/features/admin/components/application-review-form";
@@ -17,7 +18,15 @@ import { nextStatuses } from "@/lib/state-machine";
 
 export const metadata: Metadata = { title: "Review application" };
 
-export default async function ApplicationDetailPage({
+export default function ApplicationDetailPage(props: PageProps<"/admin/technician-applications/[uid]">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <ApplicationDetailPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function ApplicationDetailPageContent({
   params,
 }: PageProps<"/admin/technician-applications/[uid]">) {
   const { uid } = await params;

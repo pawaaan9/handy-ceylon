@@ -1,15 +1,25 @@
 import { BriefcaseBusiness, MapPin, Star, Wrench } from "lucide-react";
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { SectionTitle, StatTile, WelcomeBanner } from "@/components/app-shell/dashboard-kit";
 import { VerificationBanner } from "@/components/app-shell/verification-banner";
 import { requireRole } from "@/features/auth/server/dal";
 import { getCategoryNamer } from "@/features/catalogue/server/queries";
 import { getTechnicianProfile } from "@/features/technicians/server/profile";
+import { PageSkeleton } from "@/components/app-shell/page-header";
 
 export const metadata: Metadata = { title: "Technician dashboard" };
 
-export default async function TechnicianDashboardPage() {
+export default function TechnicianDashboardPage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <TechnicianDashboardPageContent />
+    </Suspense>
+  );
+}
+
+async function TechnicianDashboardPageContent() {
   const user = await requireRole(["technician"], { from: "/technician/dashboard" });
   const [profile, categoryName] = await Promise.all([getTechnicianProfile(user.uid), getCategoryNamer()]);
 

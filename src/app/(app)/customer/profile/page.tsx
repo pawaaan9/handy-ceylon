@@ -1,8 +1,9 @@
 import { BadgeCheck, MailWarning, MapPin } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 
-import { PageHeader, Panel } from "@/components/app-shell/page-header";
+import { PageHeader, Panel, PageSkeleton } from "@/components/app-shell/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { authRoutes } from "@/features/auth/redirects";
@@ -14,7 +15,15 @@ import { formatLocalMobile } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Your profile" };
 
-export default async function CustomerProfilePage() {
+export default function CustomerProfilePage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <CustomerProfilePageContent />
+    </Suspense>
+  );
+}
+
+async function CustomerProfilePageContent() {
   const user = await requireRole(["customer"], { from: "/customer/profile" });
   const defaultValues: CustomerProfileFormValues = {
     fullName: user.displayName,

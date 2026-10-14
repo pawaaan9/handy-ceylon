@@ -2,8 +2,9 @@ import { ArrowRight, Info } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
-import { PageHeader, Panel } from "@/components/app-shell/page-header";
+import { PageHeader, Panel, PageSkeleton } from "@/components/app-shell/page-header";
 import { FormAlert } from "@/components/forms/form-alert";
 import { Button } from "@/components/ui/button";
 import { roleHomes, technicianRoutes } from "@/features/auth/redirects";
@@ -18,7 +19,15 @@ import { formatLocalMobile } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Technician application" };
 
-export default async function TechnicianApplicationPage() {
+export default function TechnicianApplicationPage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <TechnicianApplicationPageContent />
+    </Suspense>
+  );
+}
+
+async function TechnicianApplicationPageContent() {
   const user = await requireUser({ from: technicianRoutes.application });
   if (user.role === "admin") redirect(roleHomes.admin);
 

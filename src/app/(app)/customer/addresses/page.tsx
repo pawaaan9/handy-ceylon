@@ -1,8 +1,9 @@
 import { MapPinPlus, MapPinned } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 
-import { PageHeader } from "@/components/app-shell/page-header";
+import { PageHeader, PageSkeleton } from "@/components/app-shell/page-header";
 import { FormAlert } from "@/components/forms/form-alert";
 import { Button } from "@/components/ui/button";
 import { AddressCard } from "@/features/addresses/components/address-card";
@@ -19,7 +20,15 @@ const messages: Record<string, string> = {
   default: "Default address updated.",
 };
 
-export default async function AddressesPage({ searchParams }: PageProps<"/customer/addresses">) {
+export default function AddressesPage(props: PageProps<"/customer/addresses">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <AddressesPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function AddressesPageContent({ searchParams }: PageProps<"/customer/addresses">) {
   const user = await requireRole(["customer"], { from: "/customer/addresses" });
   const [addresses, { status }] = await Promise.all([listAddresses(user.uid), searchParams]);
   const message = typeof status === "string" ? messages[status] : undefined;

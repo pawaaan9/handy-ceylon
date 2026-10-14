@@ -2,9 +2,10 @@ import { BadgeCheck, MailWarning, ShieldCheck, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
 import { WelcomeBanner } from "@/components/app-shell/dashboard-kit";
-import { PageHeader, Panel } from "@/components/app-shell/page-header";
+import { PageHeader, Panel, PageSkeleton } from "@/components/app-shell/page-header";
 import { LinkEmailForm } from "@/features/auth/components/link-email-form";
 import { FormAlert } from "@/components/forms/form-alert";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,15 @@ const benefits = [
   { icon: ShieldCheck, text: "Customers approve quotes before work starts — no payment disputes over scope." },
 ];
 
-export default async function TechnicianRegisterPage() {
+export default function TechnicianRegisterPage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <TechnicianRegisterPageContent />
+    </Suspense>
+  );
+}
+
+async function TechnicianRegisterPageContent() {
   const user = await getCurrentUser();
   const encodedNext = encodeURIComponent(technicianRoutes.register);
 
