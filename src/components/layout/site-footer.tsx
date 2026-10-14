@@ -55,11 +55,11 @@ async function ServicesColumn() {
 function FooterColumnView({ column }: { column: FooterColumn }) {
   return (
     <div>
-      <h2 className="text-sm font-semibold text-foreground">{column.title}</h2>
+      <h2 className="text-sm font-semibold text-white">{column.title}</h2>
       <ul className="mt-4 space-y-3">
         {column.links.map((link) => (
           <li key={link.label}>
-            <Link href={link.href} className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+            <Link href={link.href} className="text-sm text-white/65 transition-colors hover:text-white">
               {link.label}
             </Link>
           </li>
@@ -76,11 +76,11 @@ async function CopyrightYear() {
 
 export function SiteFooter() {
   return (
-    <footer className="border-t bg-muted/60">
-      <Container className="grid gap-10 py-14 sm:grid-cols-2 md:grid-cols-[1.4fr_repeat(4,1fr)]">
+    <footer className="bg-navy text-navy-foreground">
+      <Container className="grid gap-10 py-16 sm:grid-cols-2 md:grid-cols-[1.4fr_repeat(4,1fr)]">
         <div className="max-w-xs">
-          <Logo />
-          <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+          <Logo inverted />
+          <p className="mt-4 text-sm leading-relaxed text-white/65">
             {siteConfig.description}
           </p>
         </div>
@@ -91,8 +91,8 @@ export function SiteFooter() {
           <FooterColumnView key={column.title} column={column} />
         ))}
       </Container>
-      <div className="border-t">
-        <Container className="flex flex-col gap-2 py-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+      <div className="border-t border-white/10">
+        <Container className="flex flex-col gap-2 py-6 text-sm text-white/55 sm:flex-row sm:items-center sm:justify-between">
           <p>
             © <CopyrightYear /> {siteConfig.name}. All rights reserved.
           </p>

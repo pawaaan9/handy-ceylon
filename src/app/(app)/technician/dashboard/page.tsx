@@ -17,7 +17,7 @@ export default async function TechnicianDashboardPage() {
     <div className="space-y-8">
       <WelcomeBanner
         tone="navy"
-        scene="tools"
+        photo="technicianToolBelt"
         eyebrow="Technician dashboard"
         title={`Welcome, ${user.displayName.split(" ")[0]}`}
         description="Your technician account is verified and active."

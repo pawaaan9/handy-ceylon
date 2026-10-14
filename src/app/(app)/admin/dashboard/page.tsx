@@ -25,7 +25,7 @@ export default async function AdminDashboardPage() {
     <div className="space-y-8">
       <WelcomeBanner
         tone="navy"
-        scene="secure"
+        photo="electricalPanel"
         eyebrow="Administration"
         title="Platform overview"
         description={

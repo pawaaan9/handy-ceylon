@@ -29,8 +29,8 @@ export function SiteHeader() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-      <Container className="flex h-16 items-center justify-between gap-4">
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <Container className="flex h-[4.5rem] items-center justify-between gap-4">
         <Logo />
 
         <nav aria-label="Main" className="hidden lg:block">
@@ -39,7 +39,7 @@ export function SiteHeader() {
               <li key={link.href}>
                 <Link
                   href={link.href}
-                  className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  className="rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                   {link.label}
                 </Link>
@@ -51,6 +51,9 @@ export function SiteHeader() {
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="lg" className="hidden sm:inline-flex">
             <Link href={routes.login}>Log in</Link>
+          </Button>
+          <Button asChild variant="outline" size="lg" className="hidden md:inline-flex">
+            <Link href={routes.signUp}>Sign up</Link>
           </Button>
           <Button asChild variant="urgent" size="lg" className="hidden sm:inline-flex">
             <Link href={routes.getHelpNow}>

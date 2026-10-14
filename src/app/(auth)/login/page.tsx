@@ -36,7 +36,7 @@ async function LoginGate({ searchParams }: PageProps<"/login">) {
 
   return (
     <AuthShell
-      art="home"
+      art="welcome"
       title="Welcome back"
       description="Log in to manage your bookings, addresses and quotations."
       footer={

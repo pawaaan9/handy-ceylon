@@ -1,31 +1,29 @@
 import { ArrowUpRight, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 
-import { HomeScene } from "@/components/illustrations/home-scene";
+import Image from "next/image";
+
+import { photos, type PhotoKey } from "@/assets/photos";
 import { LinePattern } from "@/components/illustrations/line-pattern";
-import { ToolsScene } from "@/components/illustrations/tools-scene";
-import { SecureScene } from "@/components/illustrations/secure-scene";
 import { cn } from "@/lib/utils";
 
-const scenes = { home: HomeScene, tools: ToolsScene, secure: SecureScene } as const;
-
-/** Flat colour banner with an illustration — the top of every dashboard. */
+/** Solid colour banner with a framed photo — the top of every dashboard. */
 export function WelcomeBanner({
   eyebrow,
   title,
   description,
   actions,
-  scene = "home",
+  photo = "electricianAtWork",
   tone = "primary",
 }: {
   eyebrow?: string;
   title: string;
   description?: React.ReactNode;
   actions?: React.ReactNode;
-  scene?: keyof typeof scenes;
+  photo?: PhotoKey;
   tone?: "primary" | "navy";
 }) {
-  const Scene = scenes[scene];
+  const image = photos[photo];
   return (
     <section
       className={cn(
@@ -34,16 +32,15 @@ export function WelcomeBanner({
       )}
     >
       <LinePattern className="text-white/[0.07]" />
-      <div className="relative grid items-center gap-6 p-6 sm:p-8 md:grid-cols-[1fr_auto] lg:p-10">
+      <div className="relative grid items-center gap-6 p-6 sm:p-8 md:grid-cols-[1fr_auto] lg:p-9">
         <div>
           {eyebrow ? <p className="text-sm font-semibold text-white/75">{eyebrow}</p> : null}
-          <h1 className="mt-1 text-3xl font-extrabold sm:text-4xl">{title}</h1>
+          <h1 className="mt-1 text-3xl font-bold sm:text-4xl">{title}</h1>
           {description ? <p className="mt-2 max-w-xl text-white/80">{description}</p> : null}
           {actions ? <div className="mt-6 flex flex-wrap gap-2">{actions}</div> : null}
         </div>
-        {/* On teal, frame the scene on sand so its teal details stay visible. */}
-        <div className={cn("hidden md:block", tone === "primary" && "rounded-2xl bg-sand px-5 pt-4")}>
-          <Scene className="h-44 w-auto lg:h-48" />
+        <div className="relative hidden h-44 w-72 overflow-hidden rounded-2xl ring-4 ring-white/10 md:block lg:h-48 lg:w-80">
+          <Image src={image.src} alt={image.alt} fill placeholder="blur" sizes="320px" className="object-cover" />
         </div>
       </div>
     </section>

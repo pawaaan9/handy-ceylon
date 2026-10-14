@@ -27,6 +27,7 @@ export default async function CustomerDashboardPage() {
   return (
     <div className="space-y-8">
       <WelcomeBanner
+        photo="plumberUnderSink"
         eyebrow="Customer dashboard"
         title={`Hello, ${firstName}`}
         description="Book trusted technicians, keep your addresses ready and track every job here."

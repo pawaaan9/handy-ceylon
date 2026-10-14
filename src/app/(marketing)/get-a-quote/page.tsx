@@ -9,7 +9,9 @@ export default function GetAQuotePage() {
   return (
     <LaunchingSoon
       icon={FileText}
-      title="Quotations are coming soon"
+      eyebrow="Get a Quote"
+      photo="plumberBathroom"
+      title="Compare quotations, coming soon"
       description="Soon you'll be able to request technician visits or online quotes and compare prices in LKR right here."
     />
   );

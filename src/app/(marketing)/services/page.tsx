@@ -4,6 +4,7 @@ import { Suspense } from "react";
 
 import { StatusMessage } from "@/components/feedback/status-message";
 import { Container } from "@/components/layout/container";
+import { PageHero } from "@/components/layout/page-hero";
 import { CatalogueBrowser } from "@/features/catalogue/components/catalogue-browser";
 import { getCatalogue } from "@/features/catalogue/server/queries";
 
@@ -14,20 +15,19 @@ export const metadata: Metadata = {
 
 export default function ServicesPage() {
   return (
-    <Container className="py-12 sm:py-16">
-      <div className="max-w-2xl">
-        <p className="text-sm font-semibold text-primary">Services</p>
-        <h1 className="mt-2 text-3xl font-bold text-foreground sm:text-4xl">Find the right professional</h1>
-        <p className="mt-3 text-lg text-muted-foreground">
-          Search by problem or browse categories to see what verified technicians can help with.
-        </p>
-      </div>
-      <div className="mt-10">
+    <>
+      <PageHero
+        eyebrow="Services"
+        title="Find the right professional"
+        description="Search by problem or browse categories to see what verified technicians can help with."
+        photo="plumberUnderSink"
+      />
+      <Container className="py-12 sm:py-16">
         <Suspense fallback={<BrowserSkeleton />}>
           <CatalogueSection />
         </Suspense>
-      </div>
-    </Container>
+      </Container>
+    </>
   );
 }
 

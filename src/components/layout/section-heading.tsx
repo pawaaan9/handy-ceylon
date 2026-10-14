@@ -25,8 +25,11 @@ export function SectionHeading({
         className,
       )}
     >
-      <p className="text-sm font-semibold text-primary">{eyebrow}</p>
-      <h2 id={id} className="mt-2 text-3xl font-bold text-foreground sm:text-4xl">
+      <p className="inline-flex items-center gap-2 rounded-full bg-brand-soft px-3 py-1 text-xs font-semibold tracking-wide text-primary uppercase">
+        <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
+        {eyebrow}
+      </p>
+      <h2 id={id} className="mt-4 text-3xl leading-tight font-bold text-foreground sm:text-[2.6rem]">
         {title}
       </h2>
       {description ? (

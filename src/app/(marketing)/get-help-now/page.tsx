@@ -9,7 +9,9 @@ export default function GetHelpNowPage() {
   return (
     <LaunchingSoon
       icon={Zap}
-      title="Urgent requests are coming soon"
+      eyebrow="Get Help Now"
+      photo="electricianAtWork"
+      title="Urgent help, arriving soon"
       description="We're onboarding verified technicians before opening Get Help Now. Booking will be available here once it's live."
     />
   );

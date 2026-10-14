@@ -8,7 +8,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-heading: var(--font-heading);
+  --font-heading: var(--font-sans);
   --color-brand-soft: var(--brand-soft);
   --color-urgent: var(--urgent);
   --color-urgent-foreground: var(--urgent-foreground);
@@ -170,6 +170,8 @@
   }
   html {
     @apply font-sans scroll-smooth;
+    font-optical-sizing: auto;
+    font-variation-settings: "GRAD" 0;
     scroll-padding-top: 5rem;
   }
   h1,

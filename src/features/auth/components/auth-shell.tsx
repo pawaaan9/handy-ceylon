@@ -1,46 +1,47 @@
-import { ArrowLeft, Check } from "lucide-react";
+import { ArrowLeft, BadgeCheck, Check } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 
-import { HomeScene } from "@/components/illustrations/home-scene";
-import { LinePattern } from "@/components/illustrations/line-pattern";
-import { SecureScene } from "@/components/illustrations/secure-scene";
-import { ToolsScene } from "@/components/illustrations/tools-scene";
+import { photos, type PhotoKey } from "@/assets/photos";
 import { Logo } from "@/components/layout/logo";
 import { routes, siteConfig } from "@/config/site";
-import { cn } from "@/lib/utils";
 
-const art = {
-  home: {
-    Scene: HomeScene,
-    panel: "bg-navy",
-    eyebrow: "Home services across Sri Lanka",
-    title: "Reliable help for every home, from Jaffna to Galle.",
-    points: ["Verified technicians only", "Approve every quotation before work starts", "Clear prices in LKR"],
+const panels = {
+  welcome: {
+    photo: "technicianPortrait",
+    position: "object-[25%_30%]",
+    title: "Trusted professionals for every home in Sri Lanka.",
+    points: ["Verified technicians only", "Approve every quotation first", "Clear prices in LKR"],
   },
-  tools: {
-    Scene: ToolsScene,
-    panel: "bg-primary",
-    eyebrow: "For skilled professionals",
-    title: "Grow your trade with customers who are ready to book.",
-    points: ["Requests from the districts you choose", "Set your own inspection fees", "Build a reputation with real reviews"],
+  join: {
+    photo: "electricianAtWork",
+    position: "object-[55%_35%]",
+    title: "Book skilled help in minutes, not days.",
+    points: ["Plumbing, electrical, AC and more", "Compare quotations side by side", "Track every job in one place"],
+  },
+  technician: {
+    photo: "technicianToolBelt",
+    position: "object-[35%_50%]",
+    title: "Grow your trade with customers ready to book.",
+    points: ["Requests from districts you choose", "Set your own inspection fees", "Build a reputation with reviews"],
   },
   secure: {
-    Scene: SecureScene,
-    panel: "bg-navy",
-    eyebrow: "Your account, protected",
-    title: "Security checks keep your bookings and details safe.",
-    points: ["Verified email and mobile numbers", "Passwords are never stored by Handy Ceylon", "Exact addresses shared only after you book"],
+    photo: "electricalPanel",
+    position: "object-center",
+    title: "Your account and bookings, protected.",
+    points: ["Verified email and mobile", "Passwords never stored by us", "Addresses shared only after booking"],
   },
-} as const;
+} as const satisfies Record<string, { photo: PhotoKey; position: string; title: string; points: readonly string[] }>;
 
-export type AuthArt = keyof typeof art;
+export type AuthArt = keyof typeof panels;
 
 /**
- * Split-screen layout for auth pages: the form on the left, a flat
- * illustration panel on the right (stacked as a banner on small screens).
+ * Split-screen auth layout. On large screens the page is exactly one viewport
+ * tall: the photo panel sits on the left and fills the height, the form
+ * column on the right scrolls on its own. Below `lg` only the form shows.
  */
 export function AuthShell({
-  art: variant,
+  art,
   title,
   description,
   children,
@@ -52,15 +53,16 @@ export function AuthShell({
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
-  const { Scene, panel, eyebrow, title: asideTitle, points } = art[variant];
+  const panel = panels[art];
+  const photo = photos[panel.photo];
   return (
-    <div className="grid min-h-dvh flex-1 bg-background lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
-      <div className="flex min-w-0 flex-col">
-        <header className="flex h-16 items-center justify-between px-5 sm:px-10">
+    <div className="grid min-h-dvh flex-1 bg-background lg:h-dvh lg:flex-none lg:grid-cols-2 lg:grid-rows-1 lg:overflow-hidden">
+      <div className="relative flex min-h-dvh min-w-0 flex-col lg:min-h-0 lg:overflow-y-auto">
+        <header className="flex h-16 shrink-0 items-center justify-between px-5 sm:px-10 lg:px-14">
           <Logo />
           <Link
             href={routes.home}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground"
           >
             <ArrowLeft className="size-4" aria-hidden="true" />
             <span className="hidden sm:inline">Back to home</span>
@@ -68,20 +70,16 @@ export function AuthShell({
           </Link>
         </header>
 
-        <main id="main" className="flex flex-1 justify-center px-5 pt-4 pb-12 sm:px-10 lg:items-center lg:py-12">
-          <div className="w-full max-w-md">
-            <div className={cn("relative mb-8 overflow-hidden rounded-2xl lg:hidden", panel)}>
-              <LinePattern className="text-white/[0.06]" />
-              <Scene className="relative mx-auto h-36 w-auto py-2" />
-            </div>
-            <h1 className="text-3xl font-extrabold text-foreground sm:text-[2rem]">{title}</h1>
+        <main id="main" className="flex flex-1 justify-center px-5 py-10 sm:px-10 lg:items-center lg:px-14">
+          <div className="w-full max-w-[26rem]">
+            <h1 className="text-[2rem] leading-tight font-bold text-foreground">{title}</h1>
             {description ? <p className="mt-2 leading-relaxed text-muted-foreground">{description}</p> : null}
             <div className="mt-8">{children}</div>
-            {footer ? <div className="mt-8 text-sm text-muted-foreground">{footer}</div> : null}
+            {footer ? <div className="mt-8 border-t pt-6 text-sm text-muted-foreground">{footer}</div> : null}
           </div>
         </main>
 
-        <footer className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 pb-6 text-xs text-muted-foreground sm:px-10">
+        <footer className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-5 pb-6 text-xs text-muted-foreground sm:px-10 lg:px-14">
           <span>© {siteConfig.name}</span>
           <Link href={routes.terms} className="hover:text-foreground">
             Terms
@@ -92,24 +90,37 @@ export function AuthShell({
         </footer>
       </div>
 
-      <aside className={cn("relative hidden overflow-hidden text-navy-foreground lg:flex", panel)}>
-        <LinePattern className="text-white/[0.06]" />
-        <div className="relative m-6 flex flex-1 flex-col justify-between rounded-[2rem] border border-white/10 p-10 xl:p-14">
-          <div>
-            <p className="text-sm font-semibold tracking-wide text-white/70 uppercase">{eyebrow}</p>
-            <p className="mt-3 max-w-md font-heading text-3xl leading-tight font-bold xl:text-4xl">{asideTitle}</p>
+      <aside className="relative hidden h-full p-3 lg:order-first lg:block">
+        <div className="relative h-full overflow-hidden rounded-[1.75rem] bg-navy">
+          <Image
+            src={photo.src}
+            alt={photo.alt}
+            fill
+            priority
+            sizes="50vw"
+            placeholder="blur"
+            className={`object-cover ${panel.position}`}
+          />
+          <div aria-hidden="true" className="absolute inset-0 bg-navy/25" />
+
+          <div className="absolute top-6 left-6 inline-flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-navy">
+            <BadgeCheck className="size-4 text-primary" aria-hidden="true" />
+            Verified professionals
           </div>
-          <Scene className="mx-auto my-8 w-full max-w-lg" />
-          <ul className="grid gap-3 text-sm xl:grid-cols-3">
-            {points.map((point) => (
-              <li key={point} className="flex items-start gap-2 rounded-xl bg-white/[0.07] p-3">
-                <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-white text-navy">
-                  <Check className="size-3.5" aria-hidden="true" />
-                </span>
-                {point}
-              </li>
-            ))}
-          </ul>
+
+          <div className="absolute inset-x-6 bottom-6 rounded-2xl bg-navy/90 p-7 text-navy-foreground backdrop-blur-sm xl:p-8">
+            <p className="max-w-md text-2xl leading-snug font-semibold xl:text-[1.7rem]">{panel.title}</p>
+            <ul className="mt-5 grid gap-2.5 text-sm xl:grid-cols-3 xl:gap-4">
+              {panel.points.map((point) => (
+                <li key={point} className="flex items-start gap-2 text-white/85">
+                  <span className="mt-0.5 flex size-4.5 shrink-0 items-center justify-center rounded-full bg-primary">
+                    <Check className="size-3 text-white" aria-hidden="true" />
+                  </span>
+                  {point}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </aside>
     </div>

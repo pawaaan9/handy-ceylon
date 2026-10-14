@@ -33,7 +33,7 @@ export default async function TechnicianRegisterPage() {
       <div className="mx-auto max-w-3xl space-y-6">
         <WelcomeBanner
           tone="navy"
-          scene="tools"
+          photo="technicianToolBelt"
           eyebrow="For skilled professionals"
           title="Become a Handy Ceylon technician"
           description="Join a network of verified home-service professionals across Sri Lanka."
@@ -151,7 +151,7 @@ export default async function TechnicianRegisterPage() {
     <div className="mx-auto max-w-3xl space-y-6">
       <WelcomeBanner
         tone="navy"
-        scene="tools"
+        photo="technicianToolBelt"
         eyebrow="Technician application"
         title={application ? "Update your application" : "Tell us about your work"}
         description="Our team reviews every application before technician tools unlock."

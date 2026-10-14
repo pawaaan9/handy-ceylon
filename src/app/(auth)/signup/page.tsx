@@ -29,7 +29,7 @@ async function SignUpGate({ searchParams }: PageProps<"/signup">) {
 
   return (
     <AuthShell
-      art={applying ? "tools" : "home"}
+      art={applying ? "technician" : "join"}
       title={applying ? "Create your account to apply" : "Create your account"}
       description={
         applying

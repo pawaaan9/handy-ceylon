@@ -24,7 +24,7 @@ async function CompleteProfileContent() {
 
   return (
     <AuthShell
-      art="home"
+      art="join"
       title="Almost there"
       description={`You're signed in as ${signedInAs}. Add a few details to start using Handy Ceylon.`}
     >
