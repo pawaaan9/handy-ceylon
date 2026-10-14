@@ -1,0 +1,190 @@
+rules_version = '2';
+
+// Handy Ceylon — Firestore Security Rules
+//
+// Principles:
+//  * Default deny. Every collection is listed explicitly.
+//  * Roles come from custom claims set by the Admin SDK (request.auth.token.role).
+//    No client can create or change a role, status, price or rating.
+//  * Lifecycle writes (requests, offers, quotations, bookings, reviews) happen on
+//    the server, which validates input with Zod and status transitions with the
+//    state machine in src/features/bookings/state-machine.ts.
+//  * Clients may write only: their own non-privileged profile fields, chat
+//    messages in conversations they belong to, and the read flag on their own
+//    notifications.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+    function uid() {
+      return request.auth.uid;
+    }
+    function role() {
+      return signedIn() ? request.auth.token.get('role', '') : '';
+    }
+    function isAdmin() {
+      return role() == 'admin';
+    }
+    function isCustomer() {
+      return role() == 'customer';
+    }
+    function isTechnician() {
+      return role() == 'technician';
+    }
+    function isVerifiedTechnician() {
+      return isTechnician() && request.auth.token.get('technicianVerified', false) == true;
+    }
+    function isSelf(userId) {
+      return signedIn() && uid() == userId;
+    }
+    function onlyChanges(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+    function touchesUpdatedAt() {
+      return request.resource.data.updatedAt == request.time;
+    }
+
+    // ---------- users ----------
+    match /users/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+      // Created by /api/account/onboard; role/status/email/phone are server-owned.
+      allow create, delete: if false;
+      allow update: if isSelf(userId)
+        && onlyChanges(['displayName', 'photoURL', 'updatedAt'])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2
+        && request.resource.data.displayName.size() <= 80
+        && touchesUpdatedAt();
+
+      match /notifications/{notificationId} {
+        allow read: if isSelf(userId);
+        allow create, delete: if false;
+        allow update: if isSelf(userId)
+          && onlyChanges(['read'])
+          && request.resource.data.read is bool;
+      }
+    }
+
+    // ---------- profiles ----------
+    match /customerProfiles/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+      allow create, delete: if false;
+      allow update: if isSelf(userId) && isCustomer()
+        && onlyChanges(['savedAddresses', 'defaultAddressId', 'updatedAt'])
+        && request.resource.data.savedAddresses is list
+        && request.resource.data.savedAddresses.size() <= 10
+        && touchesUpdatedAt();
+    }
+
+    match /technicianProfiles/{userId} {
+      // Approved profiles are public so customers can compare technicians.
+      allow read: if resource.data.verificationStatus == 'approved'
+        || isSelf(userId) || isAdmin();
+      allow create, delete: if false;
+      // verificationStatus, ratings, counts and location are server-owned.
+      allow update: if isSelf(userId) && isTechnician()
+        && onlyChanges(['bio', 'categoryIds', 'serviceDistricts', 'availability', 'updatedAt'])
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 1000
+        && request.resource.data.categoryIds is list
+        && request.resource.data.categoryIds.size() <= 10
+        && request.resource.data.serviceDistricts is list
+        && request.resource.data.serviceDistricts.size() <= 25
+        && request.resource.data.availability in ['online', 'offline']
+        && touchesUpdatedAt();
+    }
+
+    match /technicianPrivate/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+      allow write: if false;
+    }
+
+    // ---------- catalogue ----------
+    match /serviceCategories/{categoryId} {
+      allow read: if true;
+      allow write: if false; // managed by admins through the Admin SDK
+    }
+
+    // ---------- requests & offers ----------
+    match /serviceRequests/{requestId} {
+      // Open requests are visible to verified technicians for matching; they
+      // contain only city/district and an approximate geohash.
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.customerId == uid())
+        || (signedIn() && resource.data.selectedTechnicianId == uid())
+        || (isVerifiedTechnician() && resource.data.status == 'open');
+      allow write: if false;
+
+      // Precise address: customer, assigned technician and admins only.
+      match /private/{docId} {
+        allow read: if isAdmin()
+          || (signedIn() && get(/databases/$(database)/documents/serviceRequests/$(requestId)).data.customerId == uid())
+          || (signedIn() && get(/databases/$(database)/documents/serviceRequests/$(requestId)).data.selectedTechnicianId == uid());
+        allow write: if false;
+      }
+
+      // Document id == technician uid, so each technician has at most one offer.
+      match /offers/{technicianId} {
+        allow read: if isAdmin()
+          || isSelf(technicianId)
+          || (signedIn() && get(/databases/$(database)/documents/serviceRequests/$(requestId)).data.customerId == uid());
+        allow write: if false;
+      }
+    }
+
+    // ---------- quotations ----------
+    match /quotations/{quotationId} {
+      allow read: if isAdmin()
+        || (signedIn() && (resource.data.customerId == uid() || resource.data.technicianId == uid()));
+      allow write: if false;
+    }
+
+    // ---------- bookings ----------
+    match /bookings/{bookingId} {
+      allow read: if isAdmin() || (signedIn() && uid() in resource.data.participantIds);
+      allow write: if false;
+
+      match /statusHistory/{eventId} {
+        allow read: if isAdmin()
+          || (signedIn() && uid() in get(/databases/$(database)/documents/bookings/$(bookingId)).data.participantIds);
+        allow write: if false;
+      }
+    }
+
+    // ---------- messaging ----------
+    match /conversations/{conversationId} {
+      function isParticipant() {
+        return signedIn()
+          && uid() in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+      }
+
+      allow read: if isAdmin() || (signedIn() && uid() in resource.data.participantIds);
+      allow write: if false; // created by the server when a booking is made
+
+      match /messages/{messageId} {
+        allow read: if isAdmin() || isParticipant();
+        allow create: if isParticipant()
+          && request.resource.data.keys().hasOnly(['senderId', 'body', 'attachmentPath', 'createdAt'])
+          && request.resource.data.senderId == uid()
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 2000
+          && (request.resource.data.attachmentPath == null
+              || request.resource.data.attachmentPath.matches('conversations/' + conversationId + '/.+'))
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+
+    // ---------- reviews ----------
+    match /reviews/{bookingId} {
+      allow read: if true;
+      // Server verifies the booking is completed and the author is its customer.
+      allow write: if false;
+    }
+  }
+}
