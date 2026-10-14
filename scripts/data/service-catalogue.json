@@ -1,0 +1,140 @@
+{
+  "categories": [
+    {
+      "id": "plumbing",
+      "name": "Plumbing",
+      "description": "Leaks, blocked drains, taps, water pumps and tank fittings.",
+      "icon": "droplets",
+      "keywords": ["pipe", "leak", "drain", "tap", "water", "pump", "toilet"],
+      "sortOrder": 10,
+      "subcategories": [
+        { "id": "repairs", "name": "Repairs", "sortOrder": 10 },
+        { "id": "installations", "name": "Installations", "sortOrder": 20 }
+      ]
+    },
+    {
+      "id": "electrical",
+      "name": "Electrical",
+      "description": "Wiring faults, breakers, sockets, lighting and distribution boards.",
+      "icon": "plug-zap",
+      "keywords": ["wiring", "power", "breaker", "switch", "socket", "light", "fan"],
+      "sortOrder": 20,
+      "subcategories": [
+        { "id": "repairs", "name": "Repairs", "sortOrder": 10 },
+        { "id": "installations", "name": "Installations", "sortOrder": 20 }
+      ]
+    },
+    {
+      "id": "air-conditioning",
+      "name": "Air Conditioning",
+      "description": "AC servicing, gas refills, installation and repairs.",
+      "icon": "air-vent",
+      "keywords": ["ac", "aircon", "inverter", "cooling", "gas", "split"],
+      "sortOrder": 30,
+      "subcategories": [
+        { "id": "servicing", "name": "Servicing", "sortOrder": 10 },
+        { "id": "repairs", "name": "Repairs", "sortOrder": 20 },
+        { "id": "installations", "name": "Installations", "sortOrder": 30 }
+      ]
+    },
+    {
+      "id": "cleaning",
+      "name": "Cleaning",
+      "description": "Deep cleaning, move-in and move-out cleaning, sofas and carpets.",
+      "icon": "sparkles",
+      "keywords": ["deep clean", "sofa", "carpet", "house", "move"],
+      "sortOrder": 40,
+      "subcategories": [
+        { "id": "home-cleaning", "name": "Home cleaning", "sortOrder": 10 },
+        { "id": "upholstery", "name": "Upholstery and carpets", "sortOrder": 20 }
+      ]
+    },
+    {
+      "id": "painting",
+      "name": "Painting",
+      "description": "Interior and exterior painting, damp treatment and touch-ups.",
+      "icon": "paint-roller",
+      "keywords": ["paint", "wall", "damp", "waterproof", "colour"],
+      "sortOrder": 50,
+      "subcategories": []
+    },
+    {
+      "id": "carpentry",
+      "name": "Carpentry",
+      "description": "Doors, cupboards, furniture repairs and fittings.",
+      "icon": "hammer",
+      "keywords": ["wood", "door", "cupboard", "furniture", "pantry", "termite"],
+      "sortOrder": 60,
+      "subcategories": []
+    },
+    {
+      "id": "appliance-repair",
+      "name": "Appliance Repair",
+      "description": "Washing machines, refrigerators, ovens and water heaters.",
+      "icon": "washing-machine",
+      "keywords": ["fridge", "washing machine", "oven", "geyser", "heater", "microwave"],
+      "sortOrder": 70,
+      "subcategories": []
+    },
+    {
+      "id": "gardening",
+      "name": "Gardening",
+      "description": "Lawn care, hedge trimming, tree pruning and garden clean-ups.",
+      "icon": "trees",
+      "keywords": ["garden", "lawn", "grass", "tree", "hedge", "landscaping"],
+      "sortOrder": 80,
+      "subcategories": []
+    },
+    {
+      "id": "masonry-tiling",
+      "name": "Masonry & Tiling",
+      "description": "Tiling, plastering, small renovations and roof leaks.",
+      "icon": "brick-wall",
+      "keywords": ["tile", "plaster", "cement", "roof", "renovation"],
+      "sortOrder": 90,
+      "subcategories": []
+    }
+  ],
+  "services": [
+    { "id": "plumbing-leak-repair", "categoryId": "plumbing", "subcategoryId": "repairs", "name": "Leak detection and repair", "description": "Find and fix leaking pipes, joints and concealed lines.", "sortOrder": 10 },
+    { "id": "plumbing-drain-unblocking", "categoryId": "plumbing", "subcategoryId": "repairs", "name": "Blocked drain clearing", "description": "Clear blocked sinks, floor drains and toilet lines.", "sortOrder": 20 },
+    { "id": "plumbing-tap-installation", "categoryId": "plumbing", "subcategoryId": "installations", "name": "Tap and mixer installation", "description": "Install or replace taps, mixers and shower sets.", "sortOrder": 30 },
+    { "id": "plumbing-water-pump", "categoryId": "plumbing", "subcategoryId": "installations", "name": "Water pump installation and repair", "description": "Install, service or repair domestic water pumps.", "sortOrder": 40 },
+    { "id": "plumbing-water-tank", "categoryId": "plumbing", "subcategoryId": "installations", "name": "Water tank installation", "description": "Fit overhead tanks, float valves and connecting lines.", "sortOrder": 50 },
+
+    { "id": "electrical-fault-finding", "categoryId": "electrical", "subcategoryId": "repairs", "name": "Electrical fault finding", "description": "Diagnose tripping breakers, power loss and faulty circuits.", "sortOrder": 10 },
+    { "id": "electrical-socket-switch", "categoryId": "electrical", "subcategoryId": "installations", "name": "Socket and switch installation", "description": "Add or replace sockets, switches and plug points.", "sortOrder": 20 },
+    { "id": "electrical-lighting", "categoryId": "electrical", "subcategoryId": "installations", "name": "Lighting and fan installation", "description": "Install ceiling fans, light fittings and outdoor lights.", "sortOrder": 30 },
+    { "id": "electrical-db-board", "categoryId": "electrical", "subcategoryId": "repairs", "name": "Distribution board repair", "description": "Repair or upgrade DB boards, breakers and RCDs.", "sortOrder": 40 },
+
+    { "id": "ac-general-service", "categoryId": "air-conditioning", "subcategoryId": "servicing", "name": "AC general service", "description": "Clean filters, coils and drain lines for split units.", "sortOrder": 10 },
+    { "id": "ac-gas-refill", "categoryId": "air-conditioning", "subcategoryId": "repairs", "name": "Gas refill and leak repair", "description": "Find refrigerant leaks and recharge the system.", "sortOrder": 20 },
+    { "id": "ac-repair", "categoryId": "air-conditioning", "subcategoryId": "repairs", "name": "AC repair", "description": "Fix cooling, noise, water leaks and PCB faults.", "sortOrder": 30 },
+    { "id": "ac-installation", "categoryId": "air-conditioning", "subcategoryId": "installations", "name": "AC installation", "description": "Install or relocate split and inverter units.", "sortOrder": 40 },
+
+    { "id": "cleaning-deep-clean", "categoryId": "cleaning", "subcategoryId": "home-cleaning", "name": "Home deep cleaning", "description": "Thorough cleaning of kitchens, bathrooms and living areas.", "sortOrder": 10 },
+    { "id": "cleaning-move-in-out", "categoryId": "cleaning", "subcategoryId": "home-cleaning", "name": "Move-in and move-out cleaning", "description": "Full clean of an empty house or apartment.", "sortOrder": 20 },
+    { "id": "cleaning-sofa", "categoryId": "cleaning", "subcategoryId": "upholstery", "name": "Sofa and upholstery cleaning", "description": "Shampoo and vacuum fabric sofas and chairs.", "sortOrder": 30 },
+    { "id": "cleaning-carpet", "categoryId": "cleaning", "subcategoryId": "upholstery", "name": "Carpet and rug cleaning", "description": "Deep clean carpets, rugs and mattresses.", "sortOrder": 40 },
+
+    { "id": "painting-interior", "categoryId": "painting", "name": "Interior painting", "description": "Paint rooms, ceilings and doors with surface preparation.", "sortOrder": 10 },
+    { "id": "painting-exterior", "categoryId": "painting", "name": "Exterior painting", "description": "Weather-resistant painting for outer walls and gates.", "sortOrder": 20 },
+    { "id": "painting-damp-treatment", "categoryId": "painting", "name": "Damp and waterproofing treatment", "description": "Treat damp walls and apply waterproof coatings.", "sortOrder": 30 },
+
+    { "id": "carpentry-door-repair", "categoryId": "carpentry", "name": "Door and window repair", "description": "Fix hinges, locks, frames and sticking doors.", "sortOrder": 10 },
+    { "id": "carpentry-cupboards", "categoryId": "carpentry", "name": "Cupboard and pantry work", "description": "Build, repair or modify cupboards and pantry units.", "sortOrder": 20 },
+    { "id": "carpentry-furniture-repair", "categoryId": "carpentry", "name": "Furniture repair", "description": "Repair chairs, tables, beds and wooden fittings.", "sortOrder": 30 },
+
+    { "id": "appliance-washing-machine", "categoryId": "appliance-repair", "name": "Washing machine repair", "description": "Repair front- and top-loading washing machines.", "sortOrder": 10 },
+    { "id": "appliance-refrigerator", "categoryId": "appliance-repair", "name": "Refrigerator repair", "description": "Fix cooling, compressor and thermostat problems.", "sortOrder": 20 },
+    { "id": "appliance-water-heater", "categoryId": "appliance-repair", "name": "Water heater repair", "description": "Repair or replace geysers and instant heaters.", "sortOrder": 30 },
+
+    { "id": "gardening-lawn-care", "categoryId": "gardening", "name": "Lawn mowing and care", "description": "Cut, edge and maintain lawns.", "sortOrder": 10 },
+    { "id": "gardening-tree-pruning", "categoryId": "gardening", "name": "Tree and hedge trimming", "description": "Prune trees and shape hedges safely.", "sortOrder": 20 },
+    { "id": "gardening-clean-up", "categoryId": "gardening", "name": "Garden clean-up", "description": "Clear overgrowth, leaves and garden waste.", "sortOrder": 30 },
+
+    { "id": "masonry-tiling", "categoryId": "masonry-tiling", "name": "Floor and wall tiling", "description": "Lay new tiles or replace cracked ones.", "sortOrder": 10 },
+    { "id": "masonry-plastering", "categoryId": "masonry-tiling", "name": "Plastering and wall repair", "description": "Repair cracks and re-plaster damaged walls.", "sortOrder": 20 },
+    { "id": "masonry-roof-leak", "categoryId": "masonry-tiling", "name": "Roof leak repair", "description": "Fix leaking roofs, gutters and flashing.", "sortOrder": 30 }
+  ]
+}

@@ -10,7 +10,7 @@ export const sriLankaDistricts = [
   "Mullaitivu", "Nuwara Eliya", "Polonnaruwa", "Puttalam", "Ratnapura",
   "Trincomalee", "Vavuniya",
 ] as const;
-export const districtSchema = z.enum(sriLankaDistricts);
+export const districtSchema = z.enum(sriLankaDistricts, { error: "Select a district" });
 
 /** LKR stored as integer cents. Upper bound guards against typos. */
 export const lkrCentsSchema = z.number().int().nonnegative().max(100_000_000_00);
@@ -20,10 +20,13 @@ export const addressSchema = z.object({
   line2: z.string().trim().max(120).optional(),
   city: z.string().trim().min(2).max(60),
   district: districtSchema,
-  location: z.object({
-    lat: z.number().min(5.8).max(10),
-    lng: z.number().min(79.5).max(82),
-  }),
+  /** Pin location; collected with a map picker in the booking phase. */
+  location: z
+    .object({
+      lat: z.number().min(5.8).max(10),
+      lng: z.number().min(79.5).max(82),
+    })
+    .optional(),
 });
 
 const mediaRefSchema = z.object({

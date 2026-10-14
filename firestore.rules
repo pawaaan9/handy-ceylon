@@ -9,9 +9,11 @@ rules_version = '2';
 //  * Lifecycle writes (requests, offers, quotations, bookings, reviews) happen on
 //    the server, which validates input with Zod and status transitions with the
 //    state machine in src/features/bookings/state-machine.ts.
-//  * Clients may write only: their own non-privileged profile fields, chat
-//    messages in conversations they belong to, and the read flag on their own
-//    notifications.
+//  * Account, profile and technician-application documents are written only
+//    by Server Actions (Admin SDK) after session, role and Zod validation.
+//  * Clients may write only: limited fields of an approved technician's own
+//    public profile, chat messages in conversations they belong to, and the
+//    read flag on their own notifications.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -29,14 +31,12 @@ service cloud.firestore {
     function isAdmin() {
       return role() == 'admin';
     }
-    function isCustomer() {
-      return role() == 'customer';
-    }
     function isTechnician() {
       return role() == 'technician';
     }
-    function isVerifiedTechnician() {
-      return isTechnician() && request.auth.token.get('technicianVerified', false) == true;
+    // The technician role is granted only when an admin approves an application.
+    function isApprovedTechnician() {
+      return isTechnician();
     }
     function isSelf(userId) {
       return signedIn() && uid() == userId;
@@ -51,14 +51,8 @@ service cloud.firestore {
     // ---------- users ----------
     match /users/{userId} {
       allow read: if isSelf(userId) || isAdmin();
-      // Created by /api/account/onboard; role/status/email/phone are server-owned.
-      allow create, delete: if false;
-      allow update: if isSelf(userId)
-        && onlyChanges(['displayName', 'photoURL', 'updatedAt'])
-        && request.resource.data.displayName is string
-        && request.resource.data.displayName.size() >= 2
-        && request.resource.data.displayName.size() <= 80
-        && touchesUpdatedAt();
+      // role, accountStatus, email, phone and photo are server-owned.
+      allow write: if false;
 
       match /notifications/{notificationId} {
         allow read: if isSelf(userId);
@@ -69,15 +63,29 @@ service cloud.firestore {
       }
     }
 
+    // Mobile-number uniqueness index — never exposed to clients.
+    match /phoneIndex/{phoneNumber} {
+      allow read, write: if false;
+    }
+
     // ---------- profiles ----------
     match /customerProfiles/{userId} {
       allow read: if isSelf(userId) || isAdmin();
-      allow create, delete: if false;
-      allow update: if isSelf(userId) && isCustomer()
-        && onlyChanges(['savedAddresses', 'defaultAddressId', 'updatedAt'])
-        && request.resource.data.savedAddresses is list
-        && request.resource.data.savedAddresses.size() <= 10
-        && touchesUpdatedAt();
+      allow write: if false; // updated through validated Server Actions
+
+      // Saved addresses: owner (and admins) may read; all changes go through
+      // Server Actions that take the uid from the session, never the client.
+      match /addresses/{addressId} {
+        allow read: if isSelf(userId) || isAdmin();
+        allow write: if false;
+      }
+    }
+
+    // Applicants may read their own application; only admins (via the server)
+    // can change its status, so nobody can approve themselves.
+    match /technicianApplications/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+      allow write: if false;
     }
 
     match /technicianProfiles/{userId} {
@@ -104,9 +112,16 @@ service cloud.firestore {
     }
 
     // ---------- catalogue ----------
+    // Only active entries are public, so inactive ones can't be listed or
+    // selected from the client. Queries must filter on active == true.
     match /serviceCategories/{categoryId} {
-      allow read: if true;
-      allow write: if false; // managed by admins through the Admin SDK
+      allow read: if resource.data.active == true || isAdmin();
+      allow write: if false; // managed via the Admin SDK (seed script / admin tools)
+    }
+
+    match /services/{serviceId} {
+      allow read: if resource.data.active == true || isAdmin();
+      allow write: if false;
     }
 
     // ---------- requests & offers ----------
@@ -116,7 +131,7 @@ service cloud.firestore {
       allow read: if isAdmin()
         || (signedIn() && resource.data.customerId == uid())
         || (signedIn() && resource.data.selectedTechnicianId == uid())
-        || (isVerifiedTechnician() && resource.data.status == 'open');
+        || (isApprovedTechnician() && resource.data.status == 'open');
       allow write: if false;
 
       // Precise address: customer, assigned technician and admins only.

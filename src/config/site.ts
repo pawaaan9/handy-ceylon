@@ -10,8 +10,12 @@ export const siteConfig = {
 
 export const routes = {
   home: "/",
+  services: "/services",
   getHelpNow: "/get-help-now",
   getAQuote: "/get-a-quote",
-  signIn: "/sign-in",
-  becomeATechnician: "/become-a-technician",
+  login: "/login",
+  signUp: "/signup",
+  becomeATechnician: "/technician/register",
+  terms: "/terms",
+  privacy: "/privacy",
 } as const;

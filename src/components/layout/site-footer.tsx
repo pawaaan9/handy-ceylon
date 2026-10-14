@@ -1,23 +1,23 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { routes, siteConfig } from "@/config/site";
-import { serviceCategories } from "@/features/services/categories";
+import { getCatalogue } from "@/features/catalogue/server/queries";
 
 import { Container } from "./container";
 import { Logo } from "./logo";
 
-const footerColumns = [
-  {
-    title: "Services",
-    links: serviceCategories.slice(0, 5).map((c) => ({ href: "/#services", label: c.name })),
-  },
+type FooterColumn = { title: string; links: { href: string; label: string }[] };
+
+const staticColumns: FooterColumn[] = [
   {
     title: "Customers",
     links: [
       { href: routes.getHelpNow, label: "Get Help Now" },
       { href: routes.getAQuote, label: "Get a Quote" },
       { href: "/#how-it-works", label: "How it works" },
-      { href: routes.signIn, label: "Sign in" },
+      { href: routes.login, label: "Log in" },
+      { href: routes.signUp, label: "Create an account" },
     ],
   },
   {
@@ -27,7 +27,47 @@ const footerColumns = [
       { href: "/#why-handy-ceylon", label: "Verification standards" },
     ],
   },
-] as const;
+  {
+    title: "Legal",
+    links: [
+      { href: routes.terms, label: "Terms of Service" },
+      { href: routes.privacy, label: "Privacy Policy" },
+    ],
+  },
+];
+
+async function ServicesColumn() {
+  const catalogue = await getCatalogue();
+  const categories = catalogue.status === "ok" ? catalogue.catalogue.categories.slice(0, 5) : [];
+  return (
+    <FooterColumnView
+      column={{
+        title: "Services",
+        links: [
+          ...categories.map((c) => ({ href: `/services/${c.id}`, label: c.name })),
+          { href: routes.services, label: "All services" },
+        ],
+      }}
+    />
+  );
+}
+
+function FooterColumnView({ column }: { column: FooterColumn }) {
+  return (
+    <div>
+      <h2 className="text-sm font-semibold text-foreground">{column.title}</h2>
+      <ul className="mt-4 space-y-3">
+        {column.links.map((link) => (
+          <li key={link.label}>
+            <Link href={link.href} className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+              {link.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 async function CopyrightYear() {
   "use cache";
@@ -37,29 +77,18 @@ async function CopyrightYear() {
 export function SiteFooter() {
   return (
     <footer className="border-t bg-muted/60">
-      <Container className="grid gap-10 py-14 md:grid-cols-[1.4fr_repeat(3,1fr)]">
+      <Container className="grid gap-10 py-14 sm:grid-cols-2 md:grid-cols-[1.4fr_repeat(4,1fr)]">
         <div className="max-w-xs">
           <Logo />
           <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
             {siteConfig.description}
           </p>
         </div>
-        {footerColumns.map((column) => (
-          <div key={column.title}>
-            <h2 className="text-sm font-semibold text-foreground">{column.title}</h2>
-            <ul className="mt-4 space-y-3">
-              {column.links.map((link) => (
-                <li key={link.label}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
+        <Suspense fallback={<FooterColumnView column={{ title: "Services", links: [{ href: routes.services, label: "All services" }] }} />}>
+          <ServicesColumn />
+        </Suspense>
+        {staticColumns.map((column) => (
+          <FooterColumnView key={column.title} column={column} />
         ))}
       </Container>
       <div className="border-t">

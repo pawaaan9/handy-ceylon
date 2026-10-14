@@ -19,7 +19,7 @@ import { Container } from "./container";
 import { Logo } from "./logo";
 
 const navLinks = [
-  { href: "/#services", label: "Services" },
+  { href: "/services", label: "Services" },
   { href: "/#booking-options", label: "Booking options" },
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#why-handy-ceylon", label: "Why Handy Ceylon" },
@@ -50,7 +50,7 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="lg" className="hidden sm:inline-flex">
-            <Link href={routes.signIn}>Sign in</Link>
+            <Link href={routes.login}>Log in</Link>
           </Button>
           <Button asChild variant="urgent" size="lg" className="hidden sm:inline-flex">
             <Link href={routes.getHelpNow}>
@@ -99,8 +99,8 @@ export function SiteHeader() {
                   </Link>
                 </Button>
                 <Button asChild variant="ghost" size="xl">
-                  <Link href={routes.signIn} onClick={() => setOpen(false)}>
-                    Sign in
+                  <Link href={routes.login} onClick={() => setOpen(false)}>
+                    Log in
                   </Link>
                 </Button>
               </div>

@@ -28,3 +28,29 @@ const dateTimeFormatter = new Intl.DateTimeFormat(siteConfig.locale, {
 export function formatDateTime(date: Date): string {
   return dateTimeFormatter.format(date);
 }
+
+/** +94771234567 → 077 123 4567 for display and editing. */
+export function formatLocalMobile(e164: string | null | undefined): string {
+  if (!e164) return "";
+  const digits = e164.replace(/\D/g, "").slice(-9);
+  if (digits.length !== 9) return e164;
+  return `0${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5)}`;
+}
+
+export function initials(name: string): string {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "?"
+  );
+}
+
+export function formatDate(iso: string): string {
+  return new Intl.DateTimeFormat(siteConfig.locale, {
+    timeZone: siteConfig.timeZone,
+    dateStyle: "medium",
+  }).format(new Date(iso));
+}

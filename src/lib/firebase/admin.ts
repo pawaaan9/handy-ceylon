@@ -23,6 +23,15 @@ function getAdminApp(): App {
   if (existing) return existing;
 
   const env = getServerEnv();
+
+  // Emulators accept unauthenticated admin calls; no credentials needed.
+  if (usingEmulators()) {
+    return initializeApp({
+      projectId: env.FIREBASE_ADMIN_PROJECT_ID,
+      storageBucket: env.FIREBASE_STORAGE_BUCKET,
+    });
+  }
+
   const credential =
     env.FIREBASE_ADMIN_CLIENT_EMAIL && env.FIREBASE_ADMIN_PRIVATE_KEY
       ? cert({
@@ -37,6 +46,12 @@ function getAdminApp(): App {
     projectId: env.FIREBASE_ADMIN_PROJECT_ID,
     storageBucket: env.FIREBASE_STORAGE_BUCKET,
   });
+}
+
+export function usingEmulators(): boolean {
+  return Boolean(
+    process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIRESTORE_EMULATOR_HOST,
+  );
 }
 
 export function adminAuth(): Auth {

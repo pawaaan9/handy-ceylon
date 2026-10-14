@@ -1,4 +1,4 @@
-import type { UserRole } from "@/features/auth/roles";
+import type { AccountStatus, UserRole } from "@/features/auth/roles";
 import type {
   BookingMode,
   BookingStatus,
@@ -7,6 +7,7 @@ import type {
   ServiceRequestStatus,
 } from "@/features/bookings/types";
 import type { sriLankaDistricts } from "@/features/bookings/schemas";
+import type { TechnicianApplicationStatus } from "@/features/technicians/types";
 
 /**
  * Firestore document shapes. Field-level write ownership is noted per field:
@@ -22,35 +23,78 @@ export type LkrCents = number;
 
 export type GeoLocation = { lat: number; lng: number; geohash: string };
 
-export type Address = {
-  id: string;
+/** customerProfiles/{uid}/addresses/{addressId} — written only by the server. */
+export type AddressDoc = {
   label: string;
-  line1: string;
-  line2?: string;
+  recipientName: string;
+  contactNumber: string; // E.164 (+94…)
+  houseOrBuilding: string;
+  street: string;
   city: string;
   district: District;
-  location: GeoLocation;
-};
-
-/** users/{uid} */
-export type UserDoc = {
-  uid: string;
-  role: UserRole; // [server] mirrors the custom claim
-  status: "active" | "suspended"; // [server]
-  displayName: string; // [owner]
-  photoURL: string | null; // [owner]
-  email: string | null; // [server]
-  phone: string; // [server] E.164, verified later via OTP
+  postalCode: string | null;
+  directions: string | null;
+  location: { lat: number; lng: number } | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 };
 
-/** customerProfiles/{uid} */
+/**
+ * Copy of an address stored on a service request when it is created, so the
+ * request keeps working even if the customer later edits or deletes the
+ * saved address.
+ */
+export type AddressSnapshot = Omit<AddressDoc, "createdAt" | "updatedAt"> & { addressId: string };
+
+/** users/{uid} — written only by the server. */
+export type UserDoc = {
+  uid: string;
+  role: UserRole; // mirrors the custom claim; authoritative for server checks
+  accountStatus: AccountStatus;
+  displayName: string;
+  email: string;
+  phoneNumber: string; // E.164; unique via phoneIndex
+  photoURL: string | null; // download URL of users/{uid}/avatar/*, set by the server
+  photoPath: string | null;
+  termsAcceptedAt: Timestamp;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+};
+// Email verification is NOT mirrored here; read it from Firebase Auth.
+
+/** phoneIndex/{E.164} — server-only uniqueness index. */
+export type PhoneIndexDoc = { uid: string; createdAt: Timestamp };
+
+/** customerProfiles/{uid} — written only by the server. */
 export type CustomerProfileDoc = {
   uid: string;
-  savedAddresses: Address[]; // [owner]
-  defaultAddressId: string | null; // [owner]
+  defaultAddressId: string | null; // → ./addresses/{addressId}
   createdAt: Timestamp;
+  updatedAt: Timestamp;
+};
+
+/** technicianApplications/{uid} — one per applicant; written only by the server. */
+export type TechnicianApplicationDoc = {
+  uid: string;
+  displayName: string;
+  email: string;
+  phoneNumber: string;
+  photoURL: string;
+  professionalIntroduction: string;
+  yearsOfExperience: number;
+  serviceCategoryIds: string[];
+  skills: string[];
+  qualifications: string | null;
+  serviceAreas: District[];
+  district: District;
+  city: string;
+  qualificationDocumentPaths: string[]; // Storage: technicianDocuments/{uid}/...
+  applicationStatus: TechnicianApplicationStatus;
+  submissionCount: number;
+  submittedAt: Timestamp;
+  reviewedAt: Timestamp | null;
+  reviewedBy: string | null; // admin uid
+  rejectionReason: string | null;
   updatedAt: Timestamp;
 };
 
@@ -58,12 +102,17 @@ export type CustomerProfileDoc = {
 export type TechnicianProfileDoc = {
   uid: string;
   displayName: string;
+  photoURL: string | null;
   bio: string; // [owner]
   categoryIds: string[]; // [owner] → serviceCategories
   serviceDistricts: District[]; // [owner]
+  skills: string[];
+  yearsOfExperience: number;
+  district: District;
+  city: string;
   availability: "online" | "offline"; // [owner]
   baseLocation?: GeoLocation; // [server] used for nearby matching
-  verificationStatus: "pending" | "approved" | "rejected" | "suspended"; // [server]
+  verificationStatus: "approved" | "suspended"; // [server] created on approval
   ratingAverage: number; // [server] aggregated from reviews
   ratingCount: number; // [server]
   completedJobs: number; // [server]
@@ -79,20 +128,39 @@ export type TechnicianPrivateDoc = {
   reviewNotes?: string; // admin only
 };
 
-/** serviceCategories/{categoryId} — public catalogue, admin-managed. */
+/** serviceCategories/{slug} — public when active; managed by admins / seed script. */
 export type ServiceCategoryDoc = {
   slug: string;
   name: string;
   description: string;
-  icon: string; // lucide icon name
+  icon: string; // name from features/catalogue/icons.ts
+  imageURL: string | null;
+  keywords: string[];
   active: boolean;
   sortOrder: number;
+  subcategories: { id: string; name: string; sortOrder: number; active: boolean }[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+};
+
+/** services/{serviceId} — a bookable service within a category. */
+export type ServiceDoc = {
+  categoryId: string; // → serviceCategories
+  subcategoryId: string | null; // → serviceCategories.subcategories[].id
+  name: string;
+  description: string;
+  active: boolean;
+  sortOrder: number;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 };
 
 /** serviceRequests/{requestId} — all [server]. Precise address lives in ./private/location. */
 export type ServiceRequestDoc = {
   customerId: string;
   categoryId: string;
+  serviceId: string | null; // → services; validated as active at creation
+  addressId: string; // the saved address used (may later be edited or deleted)
   mode: BookingMode;
   status: ServiceRequestStatus;
   title: string;
@@ -112,6 +180,9 @@ export type ServiceRequestDoc = {
   createdAt: Timestamp;
   updatedAt: Timestamp;
 };
+
+/** serviceRequests/{requestId}/private/location — precise address, customer + assigned technician only. */
+export type ServiceRequestPrivateDoc = { address: AddressSnapshot };
 
 /** serviceRequests/{requestId}/offers/{technicianId} — urgent acceptances & inspection-fee offers. */
 export type OfferDoc = {

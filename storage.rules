@@ -27,10 +27,14 @@ service firebase.storage {
       return request.resource.size < mb * 1024 * 1024;
     }
 
-    // Profile photos — public read.
+    // Profile photos — public read (technician photos are shown to customers).
     match /users/{userId}/avatar/{fileName} {
       allow read: if true;
-      allow write: if isSelf(userId) && isImage() && underMb(5);
+      allow create: if isSelf(userId)
+        && request.resource.contentType.matches('image/(jpeg|png|webp)')
+        && underMb(5);
+      allow update: if false;
+      allow delete: if isSelf(userId);
     }
 
     // Photos/videos attached to a service request while it is being drafted.
@@ -42,14 +46,17 @@ service firebase.storage {
       allow delete: if isSelf(userId);
     }
 
-    // Technician verification documents — never public.
+    // Technician application documents — never public. Any verified account
+    // owner may upload to their own folder; the server re-checks every path,
+    // type and size before attaching it to an application.
     match /technicianDocuments/{userId}/{fileName} {
       allow read: if isSelf(userId) || isAdmin();
       allow create: if isSelf(userId)
-        && request.auth.token.get('role', '') == 'technician'
+        && request.auth.token.email_verified == true
         && (isImage() || request.resource.contentType == 'application/pdf')
         && underMb(10);
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if isSelf(userId);
     }
 
     // Chat attachments — participants only (checked against Firestore).

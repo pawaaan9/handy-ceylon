@@ -9,9 +9,14 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "admin:grant": "node --env-file=.env.local scripts/grant-admin.mjs",
-    "emulators": "firebase emulators:start"
+    "emulators": "firebase emulators:start",
+    "test": "vitest run --project unit",
+    "test:emulators": "firebase emulators:exec --project demo-handy-ceylon --only auth,firestore,storage \"vitest run --project emulator\"",
+    "test:e2e": "firebase emulators:exec --project demo-handy-ceylon --only auth,firestore,storage \"node tests/e2e/auth-flows.mjs || (echo 'Retrying E2E once on a fresh browser…' && E2E_SKIP_BUILD=1 node tests/e2e/auth-flows.mjs)\"",
+    "seed:catalogue": "node --env-file-if-exists=.env.local scripts/seed-catalogue.mjs"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.9.1",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
     "firebase": "^13.0.0",
@@ -22,6 +27,7 @@
     "radix-ui": "^1.8.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-hook-form": "^7.90.0",
     "server-only": "^0.0.1",
     "shadcn": "^4.21.5",
     "sonner": "^2.0.8",
@@ -29,13 +35,16 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "puppeteer-core": "^25.13.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }

@@ -6,7 +6,14 @@ import {
   type Analytics,
 } from "firebase/analytics";
 import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
-import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  browserSessionPersistence,
+  connectAuthEmulator,
+  getAuth,
+  initializeAuth,
+  type Auth,
+} from "firebase/auth";
 import {
   connectFirestoreEmulator,
   getFirestore,
@@ -34,6 +41,22 @@ type FirebaseClient = {
 
 let client: FirebaseClient | null = null;
 
+/**
+ * Persistence is chosen explicitly at sign-in (localStorage for "remember me",
+ * sessionStorage otherwise), so IndexedDB is never needed. Skipping it also
+ * avoids the SDK stalling when a browser's IndexedDB is slow or unavailable.
+ * No popup/redirect resolver: only email/password sign-in is used.
+ */
+function createAuth(app: FirebaseApp): Auth {
+  try {
+    return initializeAuth(app, {
+      persistence: [browserLocalPersistence, browserSessionPersistence],
+    });
+  } catch {
+    return getAuth(app); // already initialised (e.g. fast refresh)
+  }
+}
+
 export function getFirebaseClient(): FirebaseClient {
   if (client) return client;
 
@@ -50,7 +73,7 @@ export function getFirebaseClient(): FirebaseClient {
       measurementId: env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
     });
 
-  const auth = getAuth(app);
+  const auth = createAuth(app);
   const db = getFirestore(app);
   const storage = getStorage(app);
 
