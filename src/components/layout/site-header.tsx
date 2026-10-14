@@ -28,20 +28,39 @@ async function ServicesNav() {
 }
 
 const mobileLinks = [
-  { href: routes.services, label: "All services", hint: "Plumbing, electrical, AC and more" },
-  { href: "/#how-it-works", label: "How it works", hint: "From request to repair in four steps" },
-  { href: "/#booking-options", label: "Booking options", hint: "Get Help Now or Get a Quote" },
-  { href: routes.becomeATechnician, label: "For technicians", hint: "Apply to receive job requests" },
+  {
+    href: routes.services,
+    label: "All services",
+    hint: "Plumbing, electrical, AC and more",
+  },
+  {
+    href: "/#how-it-works",
+    label: "How it works",
+    hint: "From request to repair in four steps",
+  },
+  {
+    href: "/#booking-options",
+    label: "Booking options",
+    hint: "Get Help Now or Get a Quote",
+  },
+  {
+    href: routes.becomeATechnician,
+    label: "For technicians",
+    hint: "Apply to receive job requests",
+  },
 ] as const;
 
 /** Category tiles for the mobile menu; renders nothing when the catalogue is empty. */
 async function MobileServices() {
   const result = await getCatalogue();
-  const categories = result.status === "ok" ? result.catalogue.categories.slice(0, 6) : [];
+  const categories =
+    result.status === "ok" ? result.catalogue.categories.slice(0, 6) : [];
   if (categories.length === 0) return null;
   return (
     <section>
-      <h2 className="mb-3 text-xs font-semibold tracking-wider text-white/50 uppercase">Popular services</h2>
+      <h2 className="mb-3 text-xs font-semibold tracking-wider text-white/50 uppercase">
+        Popular services
+      </h2>
       <ul className="grid grid-cols-3 gap-2">
         {categories.map((category, index) => (
           <li key={category.id}>
@@ -49,7 +68,11 @@ async function MobileServices() {
               href={`/services/${category.id}`}
               className="flex h-full flex-col items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-3 text-center text-xs font-medium text-white/85 transition-colors hover:bg-white/10"
             >
-              <CategoryMedia category={category} index={index} className="size-9 rounded-xl" />
+              <CategoryMedia
+                category={category}
+                index={index}
+                className="size-9 rounded-xl"
+              />
               <span className="leading-tight">{category.name}</span>
             </Link>
           </li>
@@ -66,9 +89,14 @@ function MobileMenu() {
         <ul className="divide-y divide-white/10">
           {mobileLinks.map((link) => (
             <li key={link.href}>
-              <Link href={link.href} className="group flex items-center justify-between gap-4 py-4">
+              <Link
+                href={link.href}
+                className="group flex items-center justify-between gap-4 py-4"
+              >
                 <span>
-                  <span className="block text-xl font-semibold text-white">{link.label}</span>
+                  <span className="block text-xl font-semibold text-white">
+                    {link.label}
+                  </span>
                   <span className="text-sm text-white/55">{link.hint}</span>
                 </span>
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-white/70 transition-colors group-hover:bg-urgent group-hover:text-white">
@@ -89,7 +117,12 @@ function MobileMenu() {
           <HeaderAccount variant="mobile" />
         </Suspense>
         <div className="grid grid-cols-2 gap-2">
-          <Button asChild variant="urgent" size="xl" className="h-12 rounded-full">
+          <Button
+            asChild
+            variant="urgent"
+            size="xl"
+            className="h-12 rounded-full"
+          >
             <Link href={routes.getHelpNow}>
               <Zap data-icon="inline-start" aria-hidden="true" />
               Get Help

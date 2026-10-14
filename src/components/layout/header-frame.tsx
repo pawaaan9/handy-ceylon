@@ -37,7 +37,11 @@ export function HeaderFrame({
   mobileActions: React.ReactNode;
   mobileMenu: React.ReactNode;
 }) {
-  const scrolled = useSyncExternalStore(subscribe, () => window.scrollY > 24, () => false);
+  const scrolled = useSyncExternalStore(
+    subscribe,
+    () => window.scrollY > 24,
+    () => false,
+  );
   const [open, setOpen] = useState(false);
 
   return (
@@ -60,7 +64,9 @@ export function HeaderFrame({
           <div className="hidden flex-1 justify-center lg:flex">{nav}</div>
           <div className="flex items-center gap-1.5">
             <div className="hidden items-center gap-1.5 sm:flex">{actions}</div>
-            <div className="flex items-center gap-1.5 sm:hidden">{mobileActions}</div>
+            <div className="flex items-center gap-1.5 sm:hidden">
+              {mobileActions}
+            </div>
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
                 <Button
@@ -75,7 +81,7 @@ export function HeaderFrame({
               <SheetContent
                 side="right"
                 showCloseButton={false}
-                className="w-full gap-0 overflow-y-auto border-none bg-navy text-navy-foreground sm:max-w-sm"
+                className="gap-0 overflow-y-auto rounded-l-3xl border-none bg-navy text-navy-foreground data-[side=right]:w-[calc(100%-4rem)] data-[side=right]:sm:max-w-sm"
               >
                 <LinePattern className="text-white/[0.04]" />
                 <div className="relative flex h-16 shrink-0 items-center justify-between px-5">
@@ -84,7 +90,9 @@ export function HeaderFrame({
                       <Logo inverted />
                     </div>
                   </SheetTitle>
-                  <SheetDescription className="sr-only">Site navigation</SheetDescription>
+                  <SheetDescription className="sr-only">
+                    Site navigation
+                  </SheetDescription>
                   <SheetClose asChild>
                     <Button
                       variant="ghost"
