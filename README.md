@@ -6,11 +6,11 @@ electricians, AC technicians, cleaners, painters, carpenters and more using **Ge
 
 **Stack:** Next.js 16 (App Router, Turbopack, Cache Components) · TypeScript (strict) ·
 Tailwind CSS 4 · shadcn/ui (Radix) · Lucide · Zod · React Hook Form · Firebase Auth,
-Firestore, Storage · Firebase Admin SDK · Vitest · Puppeteer (E2E).
+Firestore, Storage · Firebase Admin SDK.
 
 **Status:** foundation, landing page, authentication & user management, service catalogue and
 saved addresses are complete. Booking flows (Get Help Now / Get a Quote) come next — those
-pages say so honestly. Architecture, data model and rules: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+pages say so honestly.
 
 ## Features
 
@@ -28,8 +28,7 @@ pages say so honestly. Architecture, data model and rules: [docs/ARCHITECTURE.md
 
 - Node.js 20.9+ (developed on Node 25), npm 10+
 - A Firebase project on the **Blaze** plan (needed for phone/SMS auth and Storage)
-- For emulators and tests: [Firebase CLI](https://firebase.google.com/docs/cli) and **JDK 21+**
-- For the browser E2E suite: Google Chrome (or set `CHROME_PATH`)
+- For local emulators: [Firebase CLI](https://firebase.google.com/docs/cli) and **JDK 21+**
 
 ## Getting started
 
@@ -47,14 +46,11 @@ npm run dev                     # http://localhost:3000
 |---|---|
 | `npm run dev` / `build` / `start` | Develop, build, serve |
 | `npm run lint` · `npm run typecheck` | ESLint · route types + `tsc --noEmit` |
-| `npm test` | Unit tests (Vitest) |
-| `npm run test:emulators` | Security Rules + server integration tests on the Firebase emulators |
-| `npm run test:e2e` | Browser end-to-end suite (builds into `.next-e2e`, safe alongside `next dev`) |
 | `npm run seed:catalogue [-- --dry-run]` | Seed/refresh the service catalogue (idempotent, never deletes) |
 | `npm run admin:grant -- <email> [--revoke]` | Grant or revoke the administrator role |
 | `npm run emulators` | Start the Firebase Emulator Suite |
 
-The emulator-based commands need Java 21+, e.g.
+The emulators need Java 21+, e.g.
 `export JAVA_HOME=$(/usr/libexec/java_home -v 21)` (or `/opt/homebrew/opt/openjdk@21` with Homebrew).
 
 ## Environment configuration
@@ -122,7 +118,7 @@ sign-in shows the emulator's test account picker.
 | `phoneIndex/{E.164}` | One account per mobile number |
 | `notifications/{uid}/items/{id}` | Notifications for any role |
 
-Details, relationships and rules: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Security Rules: `firestore.rules` and `storage.rules`.
 
 ## Security model
 

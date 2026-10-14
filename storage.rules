@@ -1,72 +1,77 @@
 rules_version = '2';
 
-// Handy Ceylon — Cloud Storage Security Rules
-// Default deny. Uploads are scoped to the uploader's uid and validated for type
-// and size. Technicians see request media through short-lived signed URLs
-// issued by the server, not through these rules.
-
 service firebase.storage {
   match /b/{bucket}/o {
 
-    function signedIn() {
+    function isSignedIn() {
       return request.auth != null;
     }
-    function isSelf(userId) {
-      return signedIn() && request.auth.uid == userId;
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
+
     function isAdmin() {
-      return signedIn() && request.auth.token.get('role', '') == 'admin';
+      return isSignedIn() && request.auth.token.get('role', '') == 'admin';
     }
-    function isImage() {
-      return request.resource.contentType.matches('image/(jpeg|png|webp|heic|heif)');
+
+    function isOwnerOrAdmin(userId) {
+      return isOwner(userId) || isAdmin();
     }
-    function isVideo() {
-      return request.resource.contentType.matches('video/(mp4|quicktime|webm)');
+
+    function hasVerifiedEmail() {
+      return request.auth.token.email_verified == true;
     }
-    function underMb(mb) {
+
+    function isUnderMb(mb) {
       return request.resource.size < mb * 1024 * 1024;
     }
 
-    // Profile photos — public read (technician photos are shown to customers).
+    function isProfilePhoto() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp|heic|heif)');
+    }
+
+    function isVideo() {
+      return request.resource.contentType.matches('video/(mp4|quicktime|webm)');
+    }
+
+    function isPdf() {
+      return request.resource.contentType == 'application/pdf';
+    }
+
+    function isConversationParticipant(conversationId) {
+      return isSignedIn()
+        && request.auth.uid in firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data.participantIds;
+    }
+
     match /avatars/{userId}/{fileName} {
       allow read: if true;
-      allow create: if isSelf(userId)
-        && request.resource.contentType.matches('image/(jpeg|png|webp)')
-        && underMb(5);
+      allow create: if isOwner(userId) && isProfilePhoto() && isUnderMb(5);
+      allow delete: if isOwner(userId);
       allow update: if false;
-      allow delete: if isSelf(userId);
     }
 
-    // Photos/videos attached to a service request while it is being drafted.
     match /requestMedia/{userId}/{draftId}/{fileName} {
-      allow read: if isSelf(userId) || isAdmin();
-      allow create: if isSelf(userId)
-        && ((isImage() && underMb(10)) || (isVideo() && underMb(100)));
+      allow read: if isOwnerOrAdmin(userId);
+      allow create: if isOwner(userId) && ((isImage() && isUnderMb(10)) || (isVideo() && isUnderMb(100)));
+      allow delete: if isOwner(userId);
       allow update: if false;
-      allow delete: if isSelf(userId);
     }
 
-    // Technician application documents — never public. Any verified account
-    // owner may upload to their own folder; the server re-checks every path,
-    // type and size before attaching it to an application.
     match /technicianDocuments/{userId}/{fileName} {
-      allow read: if isSelf(userId) || isAdmin();
-      allow create: if isSelf(userId)
-        && request.auth.token.email_verified == true
-        && (isImage() || request.resource.contentType == 'application/pdf')
-        && underMb(10);
+      allow read: if isOwnerOrAdmin(userId);
+      allow create: if isOwner(userId) && hasVerifiedEmail() && (isImage() || isPdf()) && isUnderMb(10);
+      allow delete: if isOwner(userId);
       allow update: if false;
-      allow delete: if isSelf(userId);
     }
 
-    // Chat attachments — participants only (checked against Firestore).
     match /conversations/{conversationId}/{fileName} {
-      function isParticipant() {
-        return signedIn() && request.auth.uid in
-          firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data.participantIds;
-      }
-      allow read: if isParticipant() || isAdmin();
-      allow create: if isParticipant() && isImage() && underMb(10);
+      allow read: if isConversationParticipant(conversationId) || isAdmin();
+      allow create: if isConversationParticipant(conversationId) && isImage() && isUnderMb(10);
       allow update, delete: if false;
     }
 

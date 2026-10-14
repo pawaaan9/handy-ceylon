@@ -1,119 +1,132 @@
 rules_version = '2';
 
-// Handy Ceylon — Firestore Security Rules
-//
-// Principles:
-//  * Default deny. Every collection is listed explicitly.
-//  * Roles come from custom claims set by the Admin SDK (request.auth.token.role).
-//    No client can create or change a role, status, price or rating.
-//  * Lifecycle writes (requests, offers, quotations, bookings, reviews) happen on
-//    the server, which validates input with Zod and status transitions with the
-//    state machine in src/features/bookings/state-machine.ts.
-//  * Account, profile and technician-application documents are written only
-//    by Server Actions (Admin SDK) after session, role and Zod validation.
-//  * Clients may write only: limited fields of an approved technician's own
-//    public profile, chat messages in conversations they belong to, and the
-//    read flag on their own notifications.
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ---------- helpers ----------
-    function signedIn() {
+    function isSignedIn() {
       return request.auth != null;
     }
-    function uid() {
-      return request.auth.uid;
-    }
-    function role() {
-      return signedIn() ? request.auth.token.get('role', '') : '';
-    }
-    function isAdmin() {
-      return role() == 'admin';
-    }
-    function isTechnician() {
-      return role() == 'technician';
-    }
-    // The technician role is granted only when an admin approves an application.
-    function isApprovedTechnician() {
-      return isTechnician();
-    }
-    function isSelf(userId) {
-      return signedIn() && uid() == userId;
-    }
-    function onlyChanges(fields) {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
-    }
-    function touchesUpdatedAt() {
-      return request.resource.data.updatedAt == request.time;
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    // ---------- accounts: one collection per role ----------
-    // All account documents are written only by the server (Admin SDK), so no
-    // one can create an admin/technician record or change their own status.
+    function hasRole(role) {
+      return isSignedIn() && request.auth.token.get('role', '') == role;
+    }
+
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    function isTechnician() {
+      return hasRole('technician');
+    }
+
+    function isOwnerOrAdmin(userId) {
+      return isOwner(userId) || isAdmin();
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function changesOnly(fields) {
+      return incoming().diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    function stampedNow() {
+      return incoming().updatedAt == request.time;
+    }
+
+    function requestOf(requestId) {
+      return get(/databases/$(database)/documents/serviceRequests/$(requestId)).data;
+    }
+
+    function isRequestCustomer(requestId) {
+      return isSignedIn() && requestOf(requestId).customerId == request.auth.uid;
+    }
+
+    function isAssignedTechnician(requestId) {
+      return isSignedIn() && requestOf(requestId).selectedTechnicianId == request.auth.uid;
+    }
+
+    function isBookingParticipant(bookingId) {
+      return isSignedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/bookings/$(bookingId)).data.participantIds;
+    }
+
+    function isListedParticipant() {
+      return isSignedIn() && request.auth.uid in resource.data.participantIds;
+    }
+
+    function isConversationParticipant(conversationId) {
+      return isSignedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+    }
+
+    function isValidTechnicianEdit() {
+      return changesOnly(['bio', 'categoryIds', 'serviceDistricts', 'availability', 'updatedAt'])
+        && incoming().bio is string
+        && incoming().bio.size() <= 1000
+        && incoming().categoryIds is list
+        && incoming().categoryIds.size() <= 10
+        && incoming().serviceDistricts is list
+        && incoming().serviceDistricts.size() <= 25
+        && incoming().availability in ['online', 'offline']
+        && stampedNow();
+    }
+
+    function isValidMessage(conversationId) {
+      return incoming().keys().hasOnly(['senderId', 'body', 'attachmentPath', 'createdAt'])
+        && incoming().senderId == request.auth.uid
+        && incoming().body is string
+        && incoming().body.size() > 0
+        && incoming().body.size() <= 2000
+        && (incoming().attachmentPath == null
+          || incoming().attachmentPath.matches('conversations/' + conversationId + '/.+'))
+        && incoming().createdAt == request.time;
+    }
+
     match /customers/{userId} {
-      allow read: if isSelf(userId) || isAdmin();
+      allow read: if isOwnerOrAdmin(userId);
       allow write: if false;
 
-      // Saved addresses: owner (and admins) may read; all changes go through
-      // Server Actions that take the uid from the session, never the client.
       match /addresses/{addressId} {
-        allow read: if isSelf(userId) || isAdmin();
+        allow read: if isOwnerOrAdmin(userId);
         allow write: if false;
       }
-
     }
 
-    // In-app notifications for any role: notifications/{uid}/items/{id}.
-    match /notifications/{userId}/items/{notificationId} {
-      allow read: if isSelf(userId);
-      allow create, delete: if false;
-      allow update: if isSelf(userId)
-        && onlyChanges(['read'])
-        && request.resource.data.read is bool;
-    }
-
-    // Technician accounts hold contact details, so they are private; public
-    // technician cards are served by the server without contact fields.
     match /technicians/{userId} {
-      allow read: if isSelf(userId) || isAdmin();
+      allow read: if isOwnerOrAdmin(userId);
+      allow update: if isOwner(userId) && isTechnician() && isValidTechnicianEdit();
       allow create, delete: if false;
-      // verificationStatus, ratings, counts, location and contact are server-owned.
-      allow update: if isSelf(userId) && isTechnician()
-        && onlyChanges(['bio', 'categoryIds', 'serviceDistricts', 'availability', 'updatedAt'])
-        && request.resource.data.bio is string
-        && request.resource.data.bio.size() <= 1000
-        && request.resource.data.categoryIds is list
-        && request.resource.data.categoryIds.size() <= 10
-        && request.resource.data.serviceDistricts is list
-        && request.resource.data.serviceDistricts.size() <= 25
-        && request.resource.data.availability in ['online', 'offline']
-        && touchesUpdatedAt();
     }
 
     match /admins/{userId} {
-      allow read: if isSelf(userId) || isAdmin();
-      allow write: if false; // created only by scripts/grant-admin.mjs
+      allow read: if isOwnerOrAdmin(userId);
+      allow write: if false;
     }
 
-    // Mobile-number uniqueness index — never exposed to clients.
+    match /technicianApplications/{userId} {
+      allow read: if isOwnerOrAdmin(userId);
+      allow write: if false;
+    }
+
     match /phoneIndex/{phoneNumber} {
       allow read, write: if false;
     }
 
-    // Applicants may read their own application; only admins (via the server)
-    // can change its status, so nobody can approve themselves.
-    match /technicianApplications/{userId} {
-      allow read: if isSelf(userId) || isAdmin();
-      allow write: if false;
+    match /notifications/{userId}/items/{notificationId} {
+      allow read: if isOwner(userId);
+      allow update: if isOwner(userId) && changesOnly(['read']) && incoming().read is bool;
+      allow create, delete: if false;
     }
 
-    // ---------- catalogue ----------
-    // Only active entries are public, so inactive ones can't be listed or
-    // selected from the client. Queries must filter on active == true.
     match /serviceCategories/{categoryId} {
       allow read: if resource.data.active == true || isAdmin();
-      allow write: if false; // managed via the Admin SDK (seed script / admin tools)
+      allow write: if false;
     }
 
     match /services/{serviceId} {
@@ -121,82 +134,59 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // ---------- requests & offers ----------
     match /serviceRequests/{requestId} {
-      // Open requests are visible to verified technicians for matching; they
-      // contain only city/district and an approximate geohash.
       allow read: if isAdmin()
-        || (signedIn() && resource.data.customerId == uid())
-        || (signedIn() && resource.data.selectedTechnicianId == uid())
-        || (isApprovedTechnician() && resource.data.status == 'open');
+        || isOwner(resource.data.customerId)
+        || isOwner(resource.data.selectedTechnicianId)
+        || (isTechnician() && resource.data.status == 'open');
       allow write: if false;
 
-      // Precise address: customer, assigned technician and admins only.
       match /private/{docId} {
-        allow read: if isAdmin()
-          || (signedIn() && get(/databases/$(database)/documents/serviceRequests/$(requestId)).data.customerId == uid())
-          || (signedIn() && get(/databases/$(database)/documents/serviceRequests/$(requestId)).data.selectedTechnicianId == uid());
+        allow read: if isAdmin() || isRequestCustomer(requestId) || isAssignedTechnician(requestId);
         allow write: if false;
       }
 
-      // Document id == technician uid, so each technician has at most one offer.
       match /offers/{technicianId} {
-        allow read: if isAdmin()
-          || isSelf(technicianId)
-          || (signedIn() && get(/databases/$(database)/documents/serviceRequests/$(requestId)).data.customerId == uid());
+        allow read: if isAdmin() || isOwner(technicianId) || isRequestCustomer(requestId);
         allow write: if false;
       }
     }
 
-    // ---------- quotations ----------
     match /quotations/{quotationId} {
       allow read: if isAdmin()
-        || (signedIn() && (resource.data.customerId == uid() || resource.data.technicianId == uid()));
+        || isOwner(resource.data.customerId)
+        || isOwner(resource.data.technicianId);
       allow write: if false;
     }
 
-    // ---------- bookings ----------
     match /bookings/{bookingId} {
-      allow read: if isAdmin() || (signedIn() && uid() in resource.data.participantIds);
+      allow read: if isAdmin() || isListedParticipant();
       allow write: if false;
 
       match /statusHistory/{eventId} {
-        allow read: if isAdmin()
-          || (signedIn() && uid() in get(/databases/$(database)/documents/bookings/$(bookingId)).data.participantIds);
+        allow read: if isAdmin() || isBookingParticipant(bookingId);
         allow write: if false;
       }
     }
 
-    // ---------- messaging ----------
     match /conversations/{conversationId} {
-      function isParticipant() {
-        return signedIn()
-          && uid() in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
-      }
-
-      allow read: if isAdmin() || (signedIn() && uid() in resource.data.participantIds);
-      allow write: if false; // created by the server when a booking is made
+      allow read: if isAdmin() || isListedParticipant();
+      allow write: if false;
 
       match /messages/{messageId} {
-        allow read: if isAdmin() || isParticipant();
-        allow create: if isParticipant()
-          && request.resource.data.keys().hasOnly(['senderId', 'body', 'attachmentPath', 'createdAt'])
-          && request.resource.data.senderId == uid()
-          && request.resource.data.body is string
-          && request.resource.data.body.size() > 0
-          && request.resource.data.body.size() <= 2000
-          && (request.resource.data.attachmentPath == null
-              || request.resource.data.attachmentPath.matches('conversations/' + conversationId + '/.+'))
-          && request.resource.data.createdAt == request.time;
+        allow read: if isAdmin() || isConversationParticipant(conversationId);
+        allow create: if isConversationParticipant(conversationId) && isValidMessage(conversationId);
         allow update, delete: if false;
       }
     }
 
-    // ---------- reviews ----------
     match /reviews/{bookingId} {
       allow read: if true;
-      // Server verifies the booking is completed and the author is its customer.
       allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
