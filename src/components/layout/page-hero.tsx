@@ -24,7 +24,7 @@ export function PageHero({
 }) {
   const image = photo ? photos[photo] : null;
   return (
-    <section className={cn("relative overflow-hidden bg-navy text-navy-foreground", className)}>
+    <section className={cn("relative -mt-[5rem] overflow-hidden bg-navy pt-[5rem] text-navy-foreground", className)}>
       <LinePattern className="text-white/[0.04]" />
       <Container
         className={cn(

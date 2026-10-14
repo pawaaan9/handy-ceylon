@@ -51,7 +51,7 @@ export function Logo({
           inverted ? "text-navy-foreground" : "text-foreground",
         )}
       >
-        Handy<span className="text-primary">Ceylon</span>
+        Handy<span className={inverted ? "text-[oklch(0.82_0.11_180)]" : "text-primary"}>Ceylon</span>
       </span>
     </Link>
   );

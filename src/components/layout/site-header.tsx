@@ -1,116 +1,159 @@
-"use client";
-
-import { Menu, Zap } from "lucide-react";
+import { ArrowRight, FileText, ShieldCheck, Zap } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { Suspense } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { routes } from "@/config/site";
+import { CategoryMedia } from "@/features/catalogue/components/category-media";
+import { getCatalogue } from "@/features/catalogue/server/queries";
 
-import { Container } from "./container";
-import { Logo } from "./logo";
+import { HeaderAccount, HeaderAccountSkeleton } from "./header-account";
+import { HeaderFrame } from "./header-frame";
+import { ServicesMenu, type HeaderLink } from "./services-menu";
 
-const navLinks = [
-  { href: "/services", label: "Services" },
-  { href: "/#booking-options", label: "Booking options" },
+const links: readonly HeaderLink[] = [
   { href: "/#how-it-works", label: "How it works" },
-  { href: "/#why-handy-ceylon", label: "Why Handy Ceylon" },
+  { href: "/#booking-options", label: "Booking options" },
+  { href: routes.becomeATechnician, label: "For technicians" },
+];
+
+async function ServicesNav() {
+  const result = await getCatalogue();
+  return (
+    <ServicesMenu
+      categories={result.status === "ok" ? result.catalogue.categories : []}
+      links={links}
+    />
+  );
+}
+
+const mobileLinks = [
+  { href: routes.services, label: "All services", hint: "Plumbing, electrical, AC and more" },
+  { href: "/#how-it-works", label: "How it works", hint: "From request to repair in four steps" },
+  { href: "/#booking-options", label: "Booking options", hint: "Get Help Now or Get a Quote" },
+  { href: routes.becomeATechnician, label: "For technicians", hint: "Apply to receive job requests" },
 ] as const;
 
-export function SiteHeader() {
-  const [open, setOpen] = useState(false);
-
+/** Category tiles for the mobile menu; renders nothing when the catalogue is empty. */
+async function MobileServices() {
+  const result = await getCatalogue();
+  const categories = result.status === "ok" ? result.catalogue.categories.slice(0, 6) : [];
+  if (categories.length === 0) return null;
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <Container className="flex h-[4.5rem] items-center justify-between gap-4">
-        <Logo />
+    <section>
+      <h2 className="mb-3 text-xs font-semibold tracking-wider text-white/50 uppercase">Popular services</h2>
+      <ul className="grid grid-cols-3 gap-2">
+        {categories.map((category, index) => (
+          <li key={category.id}>
+            <Link
+              href={`/services/${category.id}`}
+              className="flex h-full flex-col items-center gap-2 rounded-2xl bg-white/[0.06] px-2 py-3 text-center text-xs font-medium text-white/85 transition-colors hover:bg-white/10"
+            >
+              <CategoryMedia category={category} index={index} className="size-9 rounded-xl" />
+              <span className="leading-tight">{category.name}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
-        <nav aria-label="Main" className="hidden lg:block">
-          <ul className="flex items-center gap-1">
-            {navLinks.map((link) => (
-              <li key={link.href}>
-                <Link
-                  href={link.href}
-                  className="rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
+function MobileMenu() {
+  return (
+    <div className="flex flex-1 flex-col gap-7 px-5 pt-2 pb-6">
+      <nav aria-label="Mobile">
+        <ul className="divide-y divide-white/10">
+          {mobileLinks.map((link) => (
+            <li key={link.href}>
+              <Link href={link.href} className="group flex items-center justify-between gap-4 py-4">
+                <span>
+                  <span className="block text-xl font-semibold text-white">{link.label}</span>
+                  <span className="text-sm text-white/55">{link.hint}</span>
+                </span>
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-white/70 transition-colors group-hover:bg-urgent group-hover:text-white">
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
 
-        <div className="flex items-center gap-2">
-          <Button asChild variant="ghost" size="lg" className="hidden sm:inline-flex">
-            <Link href={routes.login}>Log in</Link>
-          </Button>
-          <Button asChild variant="outline" size="lg" className="hidden md:inline-flex">
-            <Link href={routes.signUp}>Sign up</Link>
-          </Button>
-          <Button asChild variant="urgent" size="lg" className="hidden sm:inline-flex">
+      <Suspense fallback={null}>
+        <MobileServices />
+      </Suspense>
+
+      <div className="mt-auto space-y-3 rounded-3xl bg-white/[0.06] p-4">
+        <Suspense fallback={<HeaderAccountSkeleton variant="mobile" />}>
+          <HeaderAccount variant="mobile" />
+        </Suspense>
+        <div className="grid grid-cols-2 gap-2">
+          <Button asChild variant="urgent" size="xl" className="h-12 rounded-full">
             <Link href={routes.getHelpNow}>
               <Zap data-icon="inline-start" aria-hidden="true" />
-              Get Help Now
+              Get Help
             </Link>
           </Button>
-
-          <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="icon-lg" className="lg:hidden" aria-label="Open menu">
-                <Menu aria-hidden="true" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-full max-w-xs">
-              <SheetHeader>
-                <SheetTitle>Menu</SheetTitle>
-                <SheetDescription className="sr-only">
-                  Site navigation and booking actions
-                </SheetDescription>
-              </SheetHeader>
-              <nav aria-label="Mobile" className="px-4">
-                <ul className="flex flex-col">
-                  {navLinks.map((link) => (
-                    <li key={link.href}>
-                      <Link
-                        href={link.href}
-                        onClick={() => setOpen(false)}
-                        className="block rounded-md px-2 py-3 text-base font-medium text-foreground hover:bg-muted"
-                      >
-                        {link.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
-              <div className="mt-auto flex flex-col gap-2 border-t p-4">
-                <Button asChild variant="urgent" size="xl">
-                  <Link href={routes.getHelpNow} onClick={() => setOpen(false)}>
-                    Get Help Now
-                  </Link>
-                </Button>
-                <Button asChild size="xl">
-                  <Link href={routes.getAQuote} onClick={() => setOpen(false)}>
-                    Get a Quote
-                  </Link>
-                </Button>
-                <Button asChild variant="ghost" size="xl">
-                  <Link href={routes.login} onClick={() => setOpen(false)}>
-                    Log in
-                  </Link>
-                </Button>
-              </div>
-            </SheetContent>
-          </Sheet>
+          <Button asChild size="xl" className="h-12 rounded-full">
+            <Link href={routes.getAQuote}>
+              <FileText data-icon="inline-start" aria-hidden="true" />
+              Get a Quote
+            </Link>
+          </Button>
         </div>
-      </Container>
-    </header>
+        <p className="flex items-center justify-center gap-1.5 pt-1 text-xs text-white/50">
+          <ShieldCheck className="size-3.5" aria-hidden="true" />
+          Prices agreed in LKR before work starts
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** Public site header: floating navy capsule with services menu and account-aware actions. */
+export function SiteHeader() {
+  return (
+    <>
+      <HeaderFrame
+        nav={
+          <Suspense fallback={<ServicesMenu categories={[]} links={links} />}>
+            <ServicesNav />
+          </Suspense>
+        }
+        actions={
+          <>
+            <Suspense fallback={<HeaderAccountSkeleton />}>
+              <HeaderAccount />
+            </Suspense>
+            <Button
+              asChild
+              variant="urgent"
+              size="lg"
+              className="h-10 rounded-full px-4"
+            >
+              <Link href={routes.getHelpNow}>
+                <Zap data-icon="inline-start" aria-hidden="true" />
+                Get Help Now
+              </Link>
+            </Button>
+          </>
+        }
+        mobileActions={
+          <Button
+            asChild
+            variant="urgent"
+            size="icon-lg"
+            className="rounded-xl"
+            aria-label="Get Help Now"
+          >
+            <Link href={routes.getHelpNow}>
+              <Zap aria-hidden="true" />
+            </Link>
+          </Button>
+        }
+        mobileMenu={<MobileMenu />}
+      />
+    </>
   );
 }

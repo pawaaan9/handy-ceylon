@@ -26,14 +26,14 @@ const assurances = [
 ] as const;
 
 /**
- * Fills the first screen (viewport minus the 4.5rem header): search-led copy
+ * Fills the first screen (viewport minus the floating header): search-led copy
  * on the left, a photo collage on the right and a trust bar along the bottom.
  */
 export function Hero() {
   return (
     <section
       aria-labelledby="hero-title"
-      className="relative flex flex-col overflow-hidden border-b lg:min-h-[calc(100svh-4.5rem)]"
+      className="relative -mt-[5rem] flex flex-col overflow-hidden border-b pt-[5rem] lg:min-h-svh"
     >
       <div aria-hidden="true" className="absolute inset-y-0 right-0 hidden w-[40%] bg-sand lg:block" />
 
@@ -100,7 +100,7 @@ export function Hero() {
         </div>
 
         <figure className="relative mx-auto w-full max-w-xl lg:max-w-none">
-          <div className="grid h-[26rem] grid-cols-[1.5fr_1fr] grid-rows-2 gap-3 sm:h-[32rem] sm:gap-4 lg:h-[min(36rem,calc(100svh-16rem))]">
+          <div className="grid h-[26rem] grid-cols-[1.5fr_1fr] grid-rows-2 gap-3 sm:h-[32rem] sm:gap-4 lg:h-[min(36rem,calc(100svh-17rem))]">
             <div className="relative row-span-2 overflow-hidden rounded-[1.75rem] bg-muted">
               <Image
                 src={photos.electricianAtWork.src}
