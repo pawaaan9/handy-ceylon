@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  getAnalytics,
+  isSupported as isAnalyticsSupported,
+  type Analytics,
+} from "firebase/analytics";
 import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
 import {
@@ -42,6 +47,7 @@ export function getFirebaseClient(): FirebaseClient {
       storageBucket: env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
       messagingSenderId: env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
       appId: env.NEXT_PUBLIC_FIREBASE_APP_ID,
+      measurementId: env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
     });
 
   const auth = getAuth(app);
@@ -56,4 +62,19 @@ export function getFirebaseClient(): FirebaseClient {
 
   client = { app, auth, db, storage };
   return client;
+}
+
+let analytics: Promise<Analytics | null> | null = null;
+
+/** Analytics only runs in supported browsers and when a measurement ID is set. */
+export function getFirebaseAnalytics(): Promise<Analytics | null> {
+  analytics ??= (async () => {
+    const env = getClientEnv();
+    if (!env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS) {
+      return null;
+    }
+    if (!(await isAnalyticsSupported())) return null;
+    return getAnalytics(getFirebaseClient().app);
+  })();
+  return analytics;
 }
