@@ -5,42 +5,57 @@ electricians, AC technicians, cleaners, painters, carpenters and more using **Ge
 (urgent) or **Get a Quote** (technician visit or online quote).
 
 **Stack:** Next.js 16 (App Router, Turbopack, Cache Components) · TypeScript (strict) ·
-Tailwind CSS 4 · shadcn/ui (Radix) · Lucide · Zod · Firebase Auth, Firestore, Storage ·
-Firebase Admin SDK.
+Tailwind CSS 4 · shadcn/ui (Radix) · Lucide · Zod · React Hook Form · Firebase Auth,
+Firestore, Storage · Firebase Admin SDK · Vitest · Puppeteer (E2E).
 
-> **Stage 1 status:** project foundation and public landing page. Booking flows are not
-> live yet — the CTA pages say so honestly. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-> for the data model, roles and status transitions.
+**Status:** foundation, landing page, authentication & user management, service catalogue and
+saved addresses are complete. Booking flows (Get Help Now / Get a Quote) come next — those
+pages say so honestly. Architecture, data model and rules: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Features
+
+- **Sign up / log in** with email + password, **mobile number (SMS code)** or **Google**.
+  Public sign-up always creates a customer; Google and mobile users complete a short profile.
+- Email verification, forgot/reset password (custom `/auth/action` handler), remember-me sessions,
+  linking an email to a mobile-only account.
+- **Separate role collections**: `customers`, `technicians`, `admins`.
+- **Technician applications** with document uploads; admins approve/reject; approval creates the technician account.
+- **Service catalogue** in Firestore with search, category filters, subcategories and active/inactive control.
+- **Saved addresses** with a default address, full validation and ownership enforced on the server.
+- Role-protected customer, technician and admin areas; flat, gradient-free UI with split-screen auth pages.
 
 ## Requirements
 
-- Node.js 20.9+ (developed on Node 25)
-- npm 10+
-- A Firebase project (Blaze plan recommended for Storage and future Functions)
-- Optional: [Firebase CLI](https://firebase.google.com/docs/cli) (`npm i -g firebase-tools`) for rules deployment and emulators
+- Node.js 20.9+ (developed on Node 25), npm 10+
+- A Firebase project on the **Blaze** plan (needed for phone/SMS auth and Storage)
+- For emulators and tests: [Firebase CLI](https://firebase.google.com/docs/cli) and **JDK 21+**
+- For the browser E2E suite: Google Chrome (or set `CHROME_PATH`)
 
 ## Getting started
 
 ```bash
 cd handy-ceylon
 npm install
-cp .env.example .env.local   # then fill in values — see below
-npm run dev                  # http://localhost:3000
+cp .env.example .env.local      # fill in values — see below
+npm run seed:catalogue          # load service categories into Firestore
+npm run dev                     # http://localhost:3000
 ```
-
-The landing page runs without Firebase credentials. Firebase modules validate their
-configuration lazily and throw a clear error only when a Firebase feature is used.
 
 ## Scripts
 
 | Command | Purpose |
 |---|---|
-| `npm run dev` | Development server |
-| `npm run build` / `npm start` | Production build / serve |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | Generate route types and run `tsc --noEmit` |
-| `npm run emulators` | Firebase Emulator Suite (requires Firebase CLI) |
-| `npm run admin:grant -- <email>` | Grant the admin role to an existing user |
+| `npm run dev` / `build` / `start` | Develop, build, serve |
+| `npm run lint` · `npm run typecheck` | ESLint · route types + `tsc --noEmit` |
+| `npm test` | Unit tests (Vitest) |
+| `npm run test:emulators` | Security Rules + server integration tests on the Firebase emulators |
+| `npm run test:e2e` | Browser end-to-end suite (builds into `.next-e2e`, safe alongside `next dev`) |
+| `npm run seed:catalogue [-- --dry-run]` | Seed/refresh the service catalogue (idempotent, never deletes) |
+| `npm run admin:grant -- <email> [--revoke]` | Grant or revoke the administrator role |
+| `npm run emulators` | Start the Firebase Emulator Suite |
+
+The emulator-based commands need Java 21+, e.g.
+`export JAVA_HOME=$(/usr/libexec/java_home -v 21)` (or `/opt/homebrew/opt/openjdk@21` with Homebrew).
 
 ## Environment configuration
 
@@ -48,33 +63,42 @@ All variables are documented in [.env.example](.env.example).
 
 | Variable | Exposure | Source |
 |---|---|---|
-| `NEXT_PUBLIC_FIREBASE_*` | Browser (public by design) | Firebase console → Project settings → Your apps → Web app |
-| `NEXT_PUBLIC_USE_FIREBASE_EMULATORS` | Browser | `true` to use local emulators |
-| `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY` | **Server only** | Project settings → Service accounts → Generate new private key |
+| `NEXT_PUBLIC_FIREBASE_*` | Browser (public by design) | Project settings → Your apps → Web app |
+| `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | Browser | Optional, Google Analytics |
+| `NEXT_PUBLIC_USE_FIREBASE_EMULATORS` | Browser | `true` for local emulators |
+| `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY` | **Server only** | Service account key |
 | `FIREBASE_STORAGE_BUCKET` | Server only | Optional override |
 
-Never prefix Admin credentials with `NEXT_PUBLIC_`, and never commit `.env.local` or service-account
-JSON files (both are git-ignored). `src/lib/firebase/admin.ts` and `src/config/env.server.ts`
-import `server-only`, so importing them from client code fails the build. If the Admin variables are
-left empty, the Admin SDK uses Application Default Credentials (e.g. `GOOGLE_APPLICATION_CREDENTIALS`
-or Firebase App Hosting).
+Never prefix Admin credentials with `NEXT_PUBLIC_` or commit `.env.local` / service-account JSON
+(both are git-ignored). Admin modules import `server-only`, so client imports fail the build.
 
-## Firebase setup
+## Firebase setup (console)
 
-1. **Create a project** at <https://console.firebase.google.com> (region: `asia-south1` (Mumbai) is closest to Sri Lanka).
-2. **Register a Web app** and copy its config into the `NEXT_PUBLIC_FIREBASE_*` variables.
-3. **Authentication** → enable *Email/Password* (and *Phone* when OTP sign-in is built). Add your
-   production domain under *Authorized domains*.
-4. **Firestore** → create a database in production mode (`asia-south1`).
-5. **Storage** → create the default bucket.
-6. **Service account** → generate a private key and copy `client_email` / `private_key` into
-   `.env.local` (keep the key on one line with `\n` escapes, wrapped in double quotes).
-7. **Deploy rules and indexes:**
+1. **Firestore** → *Create database* (production mode, `asia-south1`).
+2. **Storage** → create the default bucket.
+3. **Authentication → Sign-in method** → enable:
+   - **Email/Password**
+   - **Google** (set a support email)
+   - **Phone** — requires the Blaze plan; under *Settings → SMS region policy* allow **Sri Lanka (+94)**.
+     Add test phone numbers for development if you don't want real SMS.
+4. **Authentication → Settings → Authorized domains** → add your production domain (`localhost` is there by default).
+5. *Optional:* **Authentication → Templates** → set the action URL to `https://<your-domain>/auth/action`
+   so reset/verification links use the branded pages (Firebase's default pages also work).
+6. Deploy rules and indexes:
    ```bash
    cp .firebaserc.example .firebaserc   # set your project id
    firebase deploy --only firestore:rules,firestore:indexes,storage
    ```
-8. **First administrator:** sign up a user, then run `npm run admin:grant -- you@example.com`.
+7. Seed the catalogue: `npm run seed:catalogue`.
+8. Create the first administrator — see below.
+
+### First administrator
+
+1. Sign up normally (email + password) and verify the email.
+2. On a trusted machine with `.env.local` credentials: `npm run admin:grant -- you@example.com`.
+3. Log in again — you land on `/admin/dashboard`. Revoke with `npm run admin:grant -- you@example.com --revoke`.
+
+There is no admin sign-up page and no client code can create an admin record (rules deny it).
 
 ### Local emulators
 
@@ -82,24 +106,33 @@ or Firebase App Hosting).
 npm run emulators   # Auth :9099, Firestore :8080, Storage :9199, UI :4000
 ```
 
-Set `NEXT_PUBLIC_USE_FIREBASE_EMULATORS=true` and export `FIREBASE_AUTH_EMULATOR_HOST`,
-`FIRESTORE_EMULATOR_HOST` and `FIREBASE_STORAGE_EMULATOR_HOST` (see `.env.example`) so the Admin SDK
-uses them too.
+Set `NEXT_PUBLIC_USE_FIREBASE_EMULATORS=true` and the `FIREBASE_*_EMULATOR_HOST` variables from
+`.env.example`. Phone sign-in codes and email links appear in the emulator UI / terminal; Google
+sign-in shows the emulator's test account picker.
 
-## Security model (summary)
+## Data model (summary)
 
-- Roles live in Firebase custom claims and are set only by server code; users cannot grant themselves
-  roles, and `admin` can never be self-selected.
-- Lifecycle data (requests, offers, quotations, bookings, reviews) is written only by the server after
-  Zod validation, role checks and state-machine checks. Security Rules deny direct client writes.
-- Precise addresses are stored separately and visible only to the customer and assigned technician.
+| Collection | Contents |
+|---|---|
+| `customers/{uid}` (+ `/addresses/{id}`) | Customer accounts and saved addresses |
+| `technicians/{uid}` | Approved technician accounts and profiles |
+| `admins/{uid}` | Administrator accounts |
+| `technicianApplications/{uid}` | Applications and review decisions |
+| `serviceCategories/{slug}`, `services/{id}` | Catalogue (active flags, subcategories) |
+| `phoneIndex/{E.164}` | One account per mobile number |
+| `notifications/{uid}/items/{id}` | Notifications for any role |
 
-## Project structure
+Details, relationships and rules: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#1-folder-structure).
+## Security model
 
-## Design tokens
+- The server decides roles from the role collections; the browser's claims are only used by Security Rules.
+- All account, address, application and catalogue writes go through Server Actions using the Admin SDK,
+  with Zod validation, session-derived user ids and state-machine checks. Rules deny direct client writes.
+- Verified email/phone values always come from Firebase Auth, never from form input.
 
-Defined in `src/app/globals.css`: teal `primary`, orange `urgent` (for urgent actions only), navy
-`foreground`/`navy`, soft neutral `muted`, plus `brand-soft` and `urgent-soft` tints. Headings use
-Plus Jakarta Sans, body text uses Inter.
+## Design
+
+Flat brand colours only (no gradients): teal `primary`, orange `urgent`, `navy`, plus `sand`, `clay`,
+`leaf` and `sky` swatches for illustrations and tiles (`src/app/globals.css`). Headings use Plus Jakarta
+Sans, body text Inter. Illustrations are hand-built SVGs in `src/components/illustrations`.

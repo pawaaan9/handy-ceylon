@@ -25,6 +25,20 @@ import { resetPasswordSchema, type ResetPasswordFormValues } from "../schemas";
 
 type Props = { mode: string | null; oobCode: string | null; continueUrl: string | null };
 
+const SLOW_MESSAGE = "This is taking longer than usual. Refresh the page to try again.";
+
+/** Never leave the user on a spinner: give up waiting after 20 seconds. */
+function withTimeout<T>(promise: Promise<T>, ms = 20_000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(SLOW_MESSAGE)), ms)),
+  ]);
+}
+
+function messageFor(error: unknown): string {
+  return error instanceof Error && error.message === SLOW_MESSAGE ? SLOW_MESSAGE : authErrorMessage(error);
+}
+
 /** Only same-origin continue URLs are followed. */
 function sameOriginPath(url: string | null): string | null {
   if (!url) return null;
@@ -58,6 +72,18 @@ export function AuthActionHandler({ mode, oobCode, continueUrl }: Props) {
 }
 
 function InvalidLink({ message }: { message: string }) {
+  if (message === SLOW_MESSAGE) {
+    return (
+      <div className="space-y-5">
+        <FormAlert tone="info" title="Still working on it">
+          {message}
+        </FormAlert>
+        <Button size="xl" className="w-full" onClick={() => window.location.reload()}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
   return (
     <div className="space-y-5">
       <FormAlert tone="error" title="Link can't be used">
@@ -95,9 +121,9 @@ function ResetPassword({ oobCode }: { oobCode: string }) {
   });
 
   useEffect(() => {
-    verifyPasswordResetCode(getFirebaseClient().auth, oobCode)
+    withTimeout(verifyPasswordResetCode(getFirebaseClient().auth, oobCode))
       .then((email) => setState({ step: "form", email }))
-      .catch((error) => setState({ step: "invalid", message: authErrorMessage(error) }));
+      .catch((error) => setState({ step: "invalid", message: messageFor(error) }));
   }, [oobCode]);
 
   async function onSubmit(values: ResetPasswordFormValues) {
@@ -181,7 +207,7 @@ function VerifyEmail({ oobCode, continueUrl }: { oobCode: string; continueUrl: s
 
   useEffect(() => {
     const { auth } = getFirebaseClient();
-    applyActionCode(auth, oobCode)
+    withTimeout(applyActionCode(auth, oobCode))
       .then(async () => {
         // Refresh the local user so the new verified state is visible at once.
         if (auth.currentUser) {
@@ -190,7 +216,7 @@ function VerifyEmail({ oobCode, continueUrl }: { oobCode: string; continueUrl: s
         }
         setState("done");
       })
-      .catch((error) => setState({ error: authErrorMessage(error) }));
+      .catch((error) => setState({ error: messageFor(error) }));
   }, [oobCode, continueUrl]);
 
   if (state === "checking") return <Checking label="Verifying your email…" />;

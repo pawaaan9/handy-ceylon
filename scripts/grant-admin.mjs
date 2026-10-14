@@ -58,37 +58,52 @@ if (!revoke && !user.emailVerified) {
   process.exit(1);
 }
 
-const userRef = db.collection("users").doc(user.uid);
-const snap = await userRef.get();
-const role = revoke ? "customer" : "admin";
+const adminRef = db.collection("admins").doc(user.uid);
+const adminSnap = await adminRef.get();
 
-if (revoke && snap.get("role") !== "admin") {
-  console.error(`${email} is not an administrator.`);
-  process.exit(1);
+if (revoke) {
+  if (!adminSnap.exists) {
+    console.error(`${email} is not an administrator.`);
+    process.exit(1);
+  }
+  await adminRef.delete();
+  // Fall back to the next role collection that still holds this uid.
+  const [technician, customer] = await db.getAll(
+    db.collection("technicians").doc(user.uid),
+    db.collection("customers").doc(user.uid),
+  );
+  const nextRole = technician.exists ? "technician" : customer.exists ? "customer" : null;
+  const claims = { ...user.customClaims };
+  if (nextRole) claims.role = nextRole;
+  else delete claims.role;
+  await auth.setCustomUserClaims(user.uid, claims);
+} else {
+  // Reuse contact details from an existing customer record if there is one.
+  const customer = await db.collection("customers").doc(user.uid).get();
+  await adminRef.set(
+    {
+      uid: user.uid,
+      accountStatus: "active",
+      displayName: adminSnap.get("displayName") ?? customer.get("displayName") ?? user.displayName ?? email,
+      email: (user.email ?? email).toLowerCase(),
+      phoneNumber: customer.get("phoneNumber") ?? user.phoneNumber ?? null,
+      photoURL: customer.get("photoURL") ?? null,
+      photoPath: customer.get("photoPath") ?? null,
+      grantedBy: "grant-admin-script",
+      grantedAt: FieldValue.serverTimestamp(),
+      ...(adminSnap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  // The claim serves Security Rules; the admins collection is authoritative.
+  await auth.setCustomUserClaims(user.uid, { ...user.customClaims, role: "admin" });
 }
-
-// Firestore is authoritative for server checks; the claim serves Security Rules.
-await userRef.set(
-  {
-    uid: user.uid,
-    role,
-    accountStatus: snap.get("accountStatus") ?? "active",
-    email: user.email ?? null,
-    displayName: snap.get("displayName") ?? user.displayName ?? email,
-    phoneNumber: snap.get("phoneNumber") ?? null,
-    photoURL: snap.get("photoURL") ?? null,
-    photoPath: snap.get("photoPath") ?? null,
-    ...(snap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
-    updatedAt: FieldValue.serverTimestamp(),
-  },
-  { merge: true },
-);
-await auth.setCustomUserClaims(user.uid, { ...user.customClaims, role });
 // End existing sessions so the change applies everywhere on next sign-in.
 await auth.revokeRefreshTokens(user.uid);
 
 console.log(
   revoke
-    ? `Revoked admin from ${email} (${user.uid}); they are now a customer.`
+    ? `Revoked admin from ${email} (${user.uid}).`
     : `Granted admin to ${email} (${user.uid}). They must log in again.`,
 );

@@ -9,7 +9,7 @@ import { isOwnedPath } from "@/features/users/server/profile-photo";
 import { preparePhoneChange } from "@/features/users/server/phone-index";
 import { adminAuth, adminDb, adminStorage } from "@/lib/firebase/admin";
 import { collections, storagePaths } from "@/lib/firestore/collections";
-import type { TechnicianApplicationDoc } from "@/lib/firestore/models";
+import type { CustomerDoc, TechnicianApplicationDoc, TechnicianDoc } from "@/lib/firestore/models";
 import { AuthError, UserFacingError } from "@/lib/errors";
 import { assertTransition } from "@/lib/state-machine";
 
@@ -84,15 +84,17 @@ export async function submitApplication(
     );
   }
   // Authoritative check — never a client-supplied flag.
-  if (!(await adminAuth().getUser(user.uid)).emailVerified) {
-    throw new UserFacingError("Verify your email address before applying.");
+  const record = await adminAuth().getUser(user.uid);
+  if (!record.email || !record.emailVerified) {
+    throw new UserFacingError("Add and verify an email address before applying.");
   }
+  const verifiedEmail = record.email.toLowerCase();
 
   // Only categories that are active in Firestore right now can be offered.
   await assertActiveCategoryIds(input.serviceCategoryIds);
   const documentPaths = await verifyDocuments(user.uid, input.qualificationDocumentPaths);
   const db = adminDb();
-  const userRef = db.collection(collections.users).doc(user.uid);
+  const userRef = db.collection(collections.customers).doc(user.uid);
   const appRef = applicationsRef().doc(user.uid);
 
   await db.runTransaction(async (tx) => {
@@ -123,7 +125,7 @@ export async function submitApplication(
     tx.set(appRef, {
       uid: user.uid,
       displayName: input.fullName,
-      email: userSnap.get("email"),
+      email: verifiedEmail,
       phoneNumber: input.phoneNumber,
       photoURL,
       professionalIntroduction: input.professionalIntroduction,
@@ -163,15 +165,12 @@ export async function reviewApplication(
 
   const db = adminDb();
   const appRef = applicationsRef().doc(input.applicantUid);
-  const userRef = db.collection(collections.users).doc(input.applicantUid);
-  const techRef = db.collection(collections.technicianProfiles).doc(input.applicantUid);
+  const customerRef = db.collection(collections.customers).doc(input.applicantUid);
+  const techRef = db.collection(collections.technicians).doc(input.applicantUid);
+  const adminRef = db.collection(collections.admins).doc(input.applicantUid);
 
   await db.runTransaction(async (tx) => {
-    const [appSnap, userSnap, techSnap] = await Promise.all([
-      tx.get(appRef),
-      tx.get(userRef),
-      tx.get(techRef),
-    ]);
+    const [appSnap, customerSnap, techSnap, adminSnap] = await tx.getAll(appRef, customerRef, techRef, adminRef);
     if (!appSnap.exists) throw new UserFacingError("Application not found.");
     const app = appSnap.data() as TechnicianApplicationDoc;
     assertTransition(applicationTransitions, app.applicationStatus, input.decision, "admin");
@@ -187,17 +186,23 @@ export async function reviewApplication(
 
     if (input.decision !== "approved") return;
 
-    if (!userSnap.exists || userSnap.get("accountStatus") !== "active") {
-      throw new UserFacingError("The applicant's account is not active.");
+    if (!customerSnap.exists || customerSnap.get("accountStatus") !== "active") {
+      throw new UserFacingError("The applicant's customer account is not active.");
     }
-    if (userSnap.get("role") !== "customer") {
+    if (techSnap.exists || adminSnap.exists) {
       throw new UserFacingError("Only customer accounts can be promoted to technician.");
     }
-    tx.update(userRef, { role: "technician", updatedAt: now });
-    tx.set(techRef, {
+    const customer = customerSnap.data() as CustomerDoc;
+    // The technician account lives in its own collection; the customer record
+    // (addresses, history) is kept but no longer decides the role.
+    tx.create(techRef, {
       uid: input.applicantUid,
+      accountStatus: "active",
       displayName: app.displayName,
-      photoURL: app.photoURL,
+      email: customer.email,
+      phoneNumber: app.phoneNumber,
+      photoURL: customer.photoURL ?? app.photoURL,
+      photoPath: customer.photoPath ?? null,
       bio: app.professionalIntroduction,
       categoryIds: app.serviceCategoryIds,
       serviceDistricts: app.serviceAreas,
@@ -207,12 +212,14 @@ export async function reviewApplication(
       city: app.city,
       availability: "offline",
       verificationStatus: "approved",
-      ratingAverage: techSnap.exists ? techSnap.get("ratingAverage") ?? 0 : 0,
-      ratingCount: techSnap.exists ? techSnap.get("ratingCount") ?? 0 : 0,
-      completedJobs: techSnap.exists ? techSnap.get("completedJobs") ?? 0 : 0,
-      createdAt: techSnap.exists ? techSnap.get("createdAt") : now,
+      ratingAverage: 0,
+      ratingCount: 0,
+      completedJobs: 0,
+      approvedAt: now,
+      approvedBy: reviewer.uid,
+      createdAt: now,
       updatedAt: now,
-    });
+    } satisfies Record<keyof Omit<TechnicianDoc, "baseLocation">, unknown>);
   });
 
   if (input.decision === "approved") {

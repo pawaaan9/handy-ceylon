@@ -16,6 +16,12 @@
   --color-navy: var(--navy);
   --color-navy-foreground: var(--navy-foreground);
   --color-success: var(--success);
+  --color-sand: var(--sand);
+  --color-sand-strong: var(--sand-strong);
+  --color-leaf: var(--leaf);
+  --color-clay: var(--clay);
+  --color-skin: var(--skin);
+  --color-sky: var(--sky);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -83,6 +89,13 @@
   --navy: oklch(0.24 0.05 262);
   --navy-foreground: oklch(0.97 0.006 247);
   --success: oklch(0.55 0.13 155);
+  /* Flat accent swatches for illustrations and tiles (never blended). */
+  --sand: oklch(0.95 0.035 80);
+  --sand-strong: oklch(0.83 0.08 75);
+  --leaf: oklch(0.58 0.12 155);
+  --clay: oklch(0.6 0.15 40);
+  --skin: oklch(0.68 0.08 55);
+  --sky: oklch(0.95 0.025 220);
 
   --chart-1: oklch(0.52 0.1 184);
   --chart-2: oklch(0.58 0.18 42);
@@ -127,6 +140,12 @@
   --navy: oklch(0.15 0.03 262);
   --navy-foreground: oklch(0.97 0.006 247);
   --success: oklch(0.7 0.14 155);
+  --sand: oklch(0.3 0.03 80);
+  --sand-strong: oklch(0.55 0.08 75);
+  --leaf: oklch(0.65 0.12 155);
+  --clay: oklch(0.65 0.14 40);
+  --skin: oklch(0.7 0.08 55);
+  --sky: oklch(0.28 0.03 220);
   --chart-1: oklch(0.72 0.11 184);
   --chart-2: oklch(0.7 0.16 50);
   --chart-3: oklch(0.65 0.08 262);

@@ -11,10 +11,10 @@ import { MAX_ADDRESSES, type AddressInput, type AddressView } from "../schemas";
 
 /**
  * Every function takes the owner's uid from the verified session and only
- * ever touches customerProfiles/{uid}/addresses — another user's address id
+ * ever touches customers/{uid}/addresses — another user's address id
  * simply isn't found, so ownership can't be bypassed by guessing ids.
  */
-const profileRef = (uid: string) => adminDb().collection(collections.customerProfiles).doc(uid);
+const profileRef = (uid: string) => adminDb().collection(collections.customers).doc(uid);
 const addressesRef = (uid: string) => profileRef(uid).collection(subcollections.addresses);
 
 const NOT_FOUND = "This address could not be found. It may have been deleted.";

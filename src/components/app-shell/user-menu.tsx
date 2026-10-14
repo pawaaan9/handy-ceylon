@@ -21,13 +21,14 @@ import type { NavItem } from "./nav-config";
 
 export function UserMenu({
   name,
-  email,
+  contact,
   photoURL,
   roleLabel,
   items,
 }: {
   name: string;
-  email: string;
+  /** Email, or mobile number for mobile-only accounts. */
+  contact: string;
   photoURL: string | null;
   roleLabel: string;
   items: NavItem[];
@@ -40,17 +41,17 @@ export function UserMenu({
           <Avatar className="size-8">
             {photoURL ? <AvatarImage src={photoURL} alt="" className="object-cover" /> : null}
             <AvatarFallback className="bg-brand-soft text-xs font-semibold text-primary">
-              {initials(name || email)}
+              {initials(name || contact)}
             </AvatarFallback>
           </Avatar>
-          <span className="hidden max-w-32 truncate text-sm font-medium sm:inline">{name || email}</span>
+          <span className="hidden max-w-32 truncate text-sm font-medium sm:inline">{name || contact}</span>
           <ChevronDown className="size-4 text-muted-foreground" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuLabel className="font-normal">
           <p className="truncate text-sm font-semibold text-foreground">{name || "Your account"}</p>
-          <p className="truncate text-xs text-muted-foreground">{email}</p>
+          <p className="truncate text-xs text-muted-foreground">{contact}</p>
           <p className="mt-1 text-xs font-medium text-primary">{roleLabel}</p>
         </DropdownMenuLabel>
         {items.length > 0 ? (

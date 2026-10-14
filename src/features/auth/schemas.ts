@@ -76,7 +76,6 @@ export type SignUpInput = z.output<typeof signUpSchema>;
 export const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, "Enter your password"),
-  remember: z.boolean(),
 });
 export type LoginFormValues = z.input<typeof loginSchema>;
 
@@ -94,11 +93,46 @@ export const resetPasswordSchema = z
   });
 export type ResetPasswordFormValues = z.input<typeof resetPasswordSchema>;
 
-/** Finishing an Auth account that exists without a Handy Ceylon profile. */
+/**
+ * Finishing an Auth account that has no Handy Ceylon profile yet (Google or
+ * mobile sign-in, or an interrupted sign-up). The mobile number is only used
+ * when Firebase Auth doesn't already hold a verified one.
+ */
 export const completeProfileSchema = z.object({
   fullName: fullNameSchema,
-  phoneNumber: sriLankaMobileSchema,
+  phoneNumber: z.union([z.literal(""), sriLankaMobileSchema]).optional(),
   acceptTerms: acceptTermsSchema,
 });
 export type CompleteProfileFormValues = z.input<typeof completeProfileSchema>;
 export type CompleteProfileInput = z.output<typeof completeProfileSchema>;
+
+/** Linking an email + password to a mobile-only account. */
+export const linkEmailSchema = z
+  .object({
+    email: emailSchema,
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, "Confirm your password"),
+  })
+  .refine((v) => v.password === v.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+export type LinkEmailFormValues = z.input<typeof linkEmailSchema>;
+
+/** Sri Lankan mobile → E.164, for phone sign-in. */
+export const phoneSignInSchema = z.object({
+  // The +94 prefix is shown beside the input, so "77 123 4567" is accepted too.
+  phoneNumber: z
+    .string()
+    .transform((v) => {
+      const digits = v.replace(/[\s()-]/g, "");
+      return /^7\d{8}$/.test(digits) ? `0${digits}` : digits;
+    })
+    .pipe(sriLankaMobileSchema),
+});
+export type PhoneSignInFormValues = z.input<typeof phoneSignInSchema>;
+
+export const otpSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code from the SMS"),
+});
+export type OtpFormValues = z.input<typeof otpSchema>;

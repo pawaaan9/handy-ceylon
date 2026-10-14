@@ -25,12 +25,20 @@ export default async function NewAddressPage() {
     directions: "",
     latitude: "",
     longitude: "",
-    makeDefault: existing.length === 0,
+    // The server makes a customer's first address the default regardless.
+    makeDefault: false,
   } as unknown as AddressFormValues;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader title="Add an address" description="Technicians use these details to reach you." />
+      <PageHeader
+        title="Add an address"
+        description={
+          existing.length === 0
+            ? "Your first address becomes your default for bookings."
+            : "Technicians use these details to reach you."
+        }
+      />
       <Panel>
         <AddressForm mode="create" defaultValues={defaultValues} />
       </Panel>

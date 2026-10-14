@@ -54,7 +54,11 @@ async function CategoryContent({ params }: PageProps<"/services/[slug]">) {
       </Button>
 
       <div className="mt-6 flex flex-col gap-5 sm:flex-row sm:items-start">
-        <CategoryMedia category={category} size="lg" />
+        <CategoryMedia
+          category={category}
+          size="lg"
+          index={result.catalogue.categories.findIndex((c) => c.id === category.id)}
+        />
         <div className="max-w-2xl">
           <h1 className="text-3xl font-bold text-foreground sm:text-4xl">{category.name}</h1>
           <p className="mt-2 text-lg text-muted-foreground">{category.description}</p>

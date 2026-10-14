@@ -15,7 +15,7 @@ import type { CustomerProfileInput } from "../schemas";
  */
 export async function updateCustomerProfile(uid: string, input: CustomerProfileInput): Promise<void> {
   const db = adminDb();
-  const userRef = db.collection(collections.users).doc(uid);
+  const userRef = db.collection(collections.customers).doc(uid);
 
   await db.runTransaction(async (tx) => {
     const userSnap = await tx.get(userRef);

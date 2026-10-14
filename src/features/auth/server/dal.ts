@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 
+import { resolveAccount } from "@/features/users/server/account-store";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { collections } from "@/lib/firestore/collections";
 import type { TechnicianApplicationStatus } from "@/features/technicians/types";
@@ -16,13 +17,14 @@ import type { AccountStatus, UserRole } from "../roles";
 
 /**
  * Data Access Layer for identity. Every protected page and Server Action goes
- * through here: the session cookie proves *who* the caller is, and the
- * users/{uid} document (server-written) says *what* they may do. Token claims
- * are never trusted for authorization on the server.
+ * through here: the session cookie proves *who* the caller is, and which role
+ * collection (customers / technicians / admins, all server-written) holds
+ * their account says *what* they may do. Token claims are never trusted for
+ * authorization on the server.
  */
 export type CurrentUser = {
   uid: string;
-  email: string;
+  email: string | null;
   emailVerified: boolean;
   /** null = Auth account exists but the Handy Ceylon profile was never created. */
   role: UserRole | null;
@@ -50,32 +52,32 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   // The cookie's verification flag is a snapshot from sign-in; unverified users
   // re-check Firebase Auth so verifying takes effect without a new session.
   let emailVerified = decoded.email_verified === true;
-  if (!emailVerified) {
+  if (!emailVerified && decoded.email) {
     emailVerified = (await adminAuth().getUser(decoded.uid)).emailVerified;
   }
 
-  const snap = await adminDb().collection(collections.users).doc(decoded.uid).get();
-  if (!snap.exists) {
+  const account = await resolveAccount(decoded.uid);
+  if (!account) {
     return {
       uid: decoded.uid,
-      email: decoded.email ?? "",
+      email: decoded.email ?? null,
       emailVerified,
       role: null,
       accountStatus: "active",
       displayName: typeof decoded.name === "string" ? decoded.name : "",
-      phoneNumber: null,
+      phoneNumber: decoded.phone_number ?? null,
       photoURL: null,
     };
   }
 
-  const data = snap.data()!;
+  const { role, data } = account;
   if (data.accountStatus !== "active") return null;
 
   return {
     uid: decoded.uid,
-    email: data.email,
+    email: data.email ?? null,
     emailVerified,
-    role: data.role,
+    role,
     accountStatus: data.accountStatus,
     displayName: data.displayName,
     phoneNumber: data.phoneNumber ?? null,
@@ -92,7 +94,8 @@ export const getApplicationStatus = cache(
 
 /** Authoritative check straight from Firebase Auth, for sensitive actions. */
 export async function isEmailVerified(uid: string): Promise<boolean> {
-  return (await adminAuth().getUser(uid)).emailVerified;
+  const record = await adminAuth().getUser(uid);
+  return Boolean(record.email) && record.emailVerified;
 }
 
 export async function homePathForUser(user: CurrentUser): Promise<string> {

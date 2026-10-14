@@ -48,30 +48,12 @@ service cloud.firestore {
       return request.resource.data.updatedAt == request.time;
     }
 
-    // ---------- users ----------
-    match /users/{userId} {
+    // ---------- accounts: one collection per role ----------
+    // All account documents are written only by the server (Admin SDK), so no
+    // one can create an admin/technician record or change their own status.
+    match /customers/{userId} {
       allow read: if isSelf(userId) || isAdmin();
-      // role, accountStatus, email, phone and photo are server-owned.
       allow write: if false;
-
-      match /notifications/{notificationId} {
-        allow read: if isSelf(userId);
-        allow create, delete: if false;
-        allow update: if isSelf(userId)
-          && onlyChanges(['read'])
-          && request.resource.data.read is bool;
-      }
-    }
-
-    // Mobile-number uniqueness index — never exposed to clients.
-    match /phoneIndex/{phoneNumber} {
-      allow read, write: if false;
-    }
-
-    // ---------- profiles ----------
-    match /customerProfiles/{userId} {
-      allow read: if isSelf(userId) || isAdmin();
-      allow write: if false; // updated through validated Server Actions
 
       // Saved addresses: owner (and admins) may read; all changes go through
       // Server Actions that take the uid from the session, never the client.
@@ -79,21 +61,24 @@ service cloud.firestore {
         allow read: if isSelf(userId) || isAdmin();
         allow write: if false;
       }
+
     }
 
-    // Applicants may read their own application; only admins (via the server)
-    // can change its status, so nobody can approve themselves.
-    match /technicianApplications/{userId} {
-      allow read: if isSelf(userId) || isAdmin();
-      allow write: if false;
-    }
-
-    match /technicianProfiles/{userId} {
-      // Approved profiles are public so customers can compare technicians.
-      allow read: if resource.data.verificationStatus == 'approved'
-        || isSelf(userId) || isAdmin();
+    // In-app notifications for any role: notifications/{uid}/items/{id}.
+    match /notifications/{userId}/items/{notificationId} {
+      allow read: if isSelf(userId);
       allow create, delete: if false;
-      // verificationStatus, ratings, counts and location are server-owned.
+      allow update: if isSelf(userId)
+        && onlyChanges(['read'])
+        && request.resource.data.read is bool;
+    }
+
+    // Technician accounts hold contact details, so they are private; public
+    // technician cards are served by the server without contact fields.
+    match /technicians/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+      allow create, delete: if false;
+      // verificationStatus, ratings, counts, location and contact are server-owned.
       allow update: if isSelf(userId) && isTechnician()
         && onlyChanges(['bio', 'categoryIds', 'serviceDistricts', 'availability', 'updatedAt'])
         && request.resource.data.bio is string
@@ -106,7 +91,19 @@ service cloud.firestore {
         && touchesUpdatedAt();
     }
 
-    match /technicianPrivate/{userId} {
+    match /admins/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+      allow write: if false; // created only by scripts/grant-admin.mjs
+    }
+
+    // Mobile-number uniqueness index — never exposed to clients.
+    match /phoneIndex/{phoneNumber} {
+      allow read, write: if false;
+    }
+
+    // Applicants may read their own application; only admins (via the server)
+    // can change its status, so nobody can approve themselves.
+    match /technicianApplications/{userId} {
       allow read: if isSelf(userId) || isAdmin();
       allow write: if false;
     }

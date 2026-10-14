@@ -16,42 +16,40 @@ import { setRoleClaim } from "./claims";
 
 type CustomerDetails = {
   fullName: string;
-  email: string;
+  email: string | null;
   phoneNumber: string;
 };
 
 /**
- * Creates users/{uid}, customerProfiles/{uid} and the phone index atomically,
- * then sets the `customer` claim. Public registration can only ever produce a
- * customer — there is no input that selects another role.
+ * Creates customers/{uid} and the phone index atomically, then sets the
+ * `customer` claim. Public registration can only ever produce a customer —
+ * there is no input that selects another role.
  */
 export async function provisionCustomer(uid: string, details: CustomerDetails): Promise<void> {
   const db = adminDb();
-  const userRef = db.collection(collections.users).doc(uid);
-  const profileRef = db.collection(collections.customerProfiles).doc(uid);
+  const customerRef = db.collection(collections.customers).doc(uid);
 
   await db.runTransaction(async (tx) => {
-    const existing = await tx.get(userRef);
-    if (existing.exists) throw new UserFacingError("This account is already set up.");
+    // Refuse if this uid already has an account in ANY role collection.
+    const existing = await tx.getAll(
+      customerRef,
+      db.collection(collections.technicians).doc(uid),
+      db.collection(collections.admins).doc(uid),
+    );
+    if (existing.some((s) => s.exists)) throw new UserFacingError("This account is already set up.");
     const applyPhone = await preparePhoneChange(db, tx, uid, null, details.phoneNumber);
 
     const now = FieldValue.serverTimestamp();
-    tx.create(userRef, {
+    tx.create(customerRef, {
       uid,
-      role: "customer",
       accountStatus: "active",
       displayName: details.fullName,
       email: details.email,
       phoneNumber: details.phoneNumber,
       photoURL: null,
       photoPath: null,
-      termsAcceptedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    });
-    tx.create(profileRef, {
-      uid,
       defaultAddressId: null,
+      termsAcceptedAt: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -68,9 +66,28 @@ async function deprovision(uid: string, phoneNumber: string): Promise<void> {
     const phoneRef = db.collection(collections.phoneIndex).doc(phoneNumber);
     const phone = await tx.get(phoneRef);
     if (phone.exists && phone.get("uid") === uid) tx.delete(phoneRef);
-    tx.delete(db.collection(collections.users).doc(uid));
-    tx.delete(db.collection(collections.customerProfiles).doc(uid));
+    tx.delete(db.collection(collections.customers).doc(uid));
   });
+}
+
+/**
+ * Finishes an account created with Google or a mobile number (or one whose
+ * sign-up was interrupted). The verified phone number and email come from the
+ * Firebase Auth record, so they can't be spoofed through the form.
+ */
+export async function completeCustomerProfile(
+  uid: string,
+  input: { fullName: string; phoneNumber?: string },
+): Promise<void> {
+  const record = await adminAuth().getUser(uid);
+  const phoneNumber = record.phoneNumber ?? input.phoneNumber;
+  if (!phoneNumber) throw new UserFacingError("Enter your mobile number.", "phoneNumber");
+  await provisionCustomer(uid, {
+    fullName: input.fullName,
+    email: record.email?.toLowerCase() ?? null,
+    phoneNumber,
+  });
+  await adminAuth().updateUser(uid, { displayName: input.fullName });
 }
 
 /**

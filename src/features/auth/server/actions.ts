@@ -1,10 +1,11 @@
 "use server";
 
+import { FieldValue } from "firebase-admin/firestore";
 import { cookies } from "next/headers";
 import { z } from "zod";
 
-import { adminAuth, adminDb } from "@/lib/firebase/admin";
-import { collections } from "@/lib/firestore/collections";
+import { accountRef, resolveAccount } from "@/features/users/server/account-store";
+import { adminAuth } from "@/lib/firebase/admin";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { AuthError, UserFacingError } from "@/lib/errors";
 
@@ -15,9 +16,8 @@ import {
   SESSION_COOKIE_NAME,
 } from "../constants";
 import { authRoutes, postLoginPath } from "../redirects";
-import { userRoleSchema } from "../roles";
 import { completeProfileSchema, signUpSchema } from "../schemas";
-import { createCustomerAccount, provisionCustomer } from "./accounts";
+import { completeCustomerProfile, createCustomerAccount } from "./accounts";
 import { setRoleClaim } from "./claims";
 import { getApplicationStatus, getCurrentUser, requireActionUser } from "./dal";
 
@@ -59,16 +59,16 @@ export async function createSessionAction(
       throw new AuthError("Please sign in again to continue.", 401);
     }
 
-    const snap = await adminDb().collection(collections.users).doc(decoded.uid).get();
-    if (snap.exists && snap.get("accountStatus") !== "active") {
+    const account = await resolveAccount(decoded.uid);
+    if (account && account.data.accountStatus !== "active") {
       throw new UserFacingError(
         "This account has been suspended. Please contact Handy Ceylon support.",
       );
     }
 
-    // Keep Security Rules claims aligned with the authoritative Firestore role.
+    // Keep Security Rules claims aligned with the authoritative role collection.
     let refreshToken = false;
-    const role = snap.exists ? userRoleSchema.parse(snap.get("role")) : null;
+    const role = account?.role ?? null;
     if (role && decoded.role !== role) {
       await setRoleClaim(decoded.uid, role);
       refreshToken = true;
@@ -121,12 +121,30 @@ export async function completeProfileAction(
     if (!user) throw new AuthError("Your session has expired. Please log in again.", 401);
     if (user.role) throw new UserFacingError("Your account is already set up.");
     const input = completeProfileSchema.parse(values);
-    await provisionCustomer(user.uid, {
+    await completeCustomerProfile(user.uid, {
       fullName: input.fullName,
-      email: user.email,
-      phoneNumber: input.phoneNumber,
+      phoneNumber: input.phoneNumber || undefined,
     });
-    await adminAuth().updateUser(user.uid, { displayName: input.fullName });
     return { redirectTo: postLoginPath({ role: "customer" }, null) };
+  });
+}
+
+/**
+ * After the browser links an email + password to a mobile-only account, copy
+ * the (Auth-verified) address into the account document.
+ */
+export async function syncLinkedEmailAction(): Promise<ActionResult> {
+  return runAction(async () => {
+    const user = await requireActionUser(undefined, { allowIncomplete: true });
+    const record = await adminAuth().getUser(user.uid);
+    if (!record.email) throw new UserFacingError("No email is linked to this account yet.");
+    const account = await resolveAccount(user.uid);
+    if (account) {
+      await accountRef(account.role, user.uid).update({
+        email: record.email.toLowerCase(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    return undefined;
   });
 }

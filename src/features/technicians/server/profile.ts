@@ -2,17 +2,23 @@ import "server-only";
 
 import { adminDb } from "@/lib/firebase/admin";
 import { collections } from "@/lib/firestore/collections";
-import type { TechnicianProfileDoc } from "@/lib/firestore/models";
+import type { TechnicianDoc } from "@/lib/firestore/models";
 
 export async function getTechnicianProfile(
   uid: string,
-): Promise<Pick<TechnicianProfileDoc, "categoryIds" | "serviceDistricts" | "verificationStatus"> | null> {
-  const snap = await adminDb().collection(collections.technicianProfiles).doc(uid).get();
+): Promise<Pick<
+  TechnicianDoc,
+  "categoryIds" | "serviceDistricts" | "verificationStatus" | "completedJobs" | "ratingAverage" | "ratingCount"
+> | null> {
+  const snap = await adminDb().collection(collections.technicians).doc(uid).get();
   if (!snap.exists) return null;
-  const data = snap.data() as TechnicianProfileDoc;
+  const data = snap.data() as TechnicianDoc;
   return {
     categoryIds: data.categoryIds,
     serviceDistricts: data.serviceDistricts,
     verificationStatus: data.verificationStatus,
+    completedJobs: data.completedJobs ?? 0,
+    ratingAverage: data.ratingAverage ?? 0,
+    ratingCount: data.ratingCount ?? 0,
   };
 }

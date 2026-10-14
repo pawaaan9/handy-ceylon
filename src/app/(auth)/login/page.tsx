@@ -3,8 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
-import { AuthCard, AuthCardSkeleton } from "@/features/auth/components/auth-card";
-import { LoginForm } from "@/features/auth/components/login-form";
+import { AuthShell, AuthShellSkeleton } from "@/features/auth/components/auth-shell";
+import { LoginPanel } from "@/features/auth/components/login-panel";
 import { authRoutes, postLoginPath, safeNextPath } from "@/features/auth/redirects";
 import { getApplicationStatus, getCurrentUser } from "@/features/auth/server/dal";
 
@@ -17,7 +17,7 @@ const notices: Record<string, string> = {
 
 export default function LoginPage(props: PageProps<"/login">) {
   return (
-    <Suspense fallback={<AuthCardSkeleton />}>
+    <Suspense fallback={<AuthShellSkeleton />}>
       <LoginGate {...props} />
     </Suspense>
   );
@@ -35,19 +35,20 @@ async function LoginGate({ searchParams }: PageProps<"/login">) {
   const signUpHref = next ? `${authRoutes.signUp}?next=${encodeURIComponent(next)}` : authRoutes.signUp;
 
   return (
-    <AuthCard
-      title="Log in to Handy Ceylon"
-      description="Welcome back. Log in to manage your bookings and profile."
+    <AuthShell
+      art="home"
+      title="Welcome back"
+      description="Log in to manage your bookings, addresses and quotations."
       footer={
         <>
           New to Handy Ceylon?{" "}
-          <Link href={signUpHref} className="font-medium text-primary hover:underline">
+          <Link href={signUpHref} className="font-semibold text-primary hover:underline">
             Create an account
           </Link>
         </>
       }
     >
-      <LoginForm next={next} notice={notice} />
-    </AuthCard>
+      <LoginPanel next={next} notice={notice} />
+    </AuthShell>
   );
 }

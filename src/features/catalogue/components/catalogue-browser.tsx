@@ -63,7 +63,7 @@ export function CatalogueBrowser({ catalogue }: { catalogue: Catalogue }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search, e.g. leaking tap, AC service, sofa cleaning"
-            className="h-11 pr-10 pl-10 text-base"
+            className="h-11 pr-10 pl-10 text-base [&::-webkit-search-cancel-button]:appearance-none"
             autoComplete="off"
           />
           {query ? (
@@ -121,7 +121,7 @@ export function CatalogueBrowser({ catalogue }: { catalogue: Catalogue }) {
           {results.map(({ category: c, services }) => (
             <li key={c.id} className="rounded-xl border bg-card p-5 sm:p-6">
               <div className="flex items-start gap-4">
-                <CategoryMedia category={c} />
+                <CategoryMedia category={c} index={catalogue.categories.findIndex((x) => x.id === c.id)} />
                 <div className="min-w-0 flex-1">
                   <h2 className="text-lg font-semibold text-foreground">
                     <Link href={`/services/${c.id}`} className="hover:text-primary">

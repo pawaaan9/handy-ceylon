@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { HomeScene } from "@/components/illustrations/home-scene";
+import { LinePattern } from "@/components/illustrations/line-pattern";
 import { Container } from "@/components/layout/container";
 import { Button } from "@/components/ui/button";
 import { routes } from "@/config/site";
@@ -31,10 +33,8 @@ const exampleSteps = [
 export function Hero() {
   return (
     <section aria-labelledby="hero-title" className="relative overflow-hidden border-b">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(var(--border)_1px,transparent_1px)] [background-size:22px_22px] [mask-image:linear-gradient(to_bottom,black,transparent_75%)] opacity-60"
-      />
+      {/* Flat sand block behind the visual; no gradients. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 hidden w-[38%] bg-sand lg:block" />
       <Container className="relative grid items-center gap-12 py-16 sm:py-20 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 lg:py-24">
         <div>
           <p className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-sm font-medium text-muted-foreground">
@@ -77,66 +77,45 @@ export function Hero() {
           </ul>
         </div>
 
-        <figure className="relative">
-          <div className="rounded-2xl border bg-card p-5 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-12px_rgb(15_23_42/0.18)] sm:p-6">
-            <div className="flex items-center justify-between gap-3 border-b pb-4">
+        <figure className="relative pb-48 sm:pb-44 lg:mb-20 lg:pb-0">
+          <div className="relative overflow-hidden rounded-[2rem] bg-navy">
+            <LinePattern className="text-white/[0.06]" />
+            <HomeScene className="relative mx-auto w-full max-w-md px-6 pt-8" />
+          </div>
+          <div className="absolute right-4 -bottom-4 left-4 rounded-2xl border bg-card p-4 shadow-[0_18px_40px_-20px_rgb(15_23_42/0.45)] sm:right-auto sm:left-[-1.5rem] sm:w-[16.5rem] lg:-bottom-24 lg:left-[-3.5rem]">
+            <div className="flex items-center justify-between gap-3 border-b pb-3">
               <div>
-                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  Example request
-                </p>
-                <p className="mt-1 font-heading font-semibold text-foreground">
-                  How a repair moves forward
-                </p>
+                <p className="text-[0.7rem] font-semibold tracking-wide text-muted-foreground uppercase">Example request</p>
+                <p className="font-heading text-sm font-semibold text-foreground">AC not cooling · Get Help Now</p>
               </div>
-              <span className="rounded-full bg-urgent-soft px-2.5 py-1 text-xs font-semibold text-urgent">
-                Awaiting your approval
+              <span className="shrink-0 rounded-full bg-urgent-soft px-2.5 py-1 text-xs font-semibold text-urgent">
+                Approve quote
               </span>
             </div>
-            <ol className="mt-5 space-y-0">
-              {exampleSteps.map((step, index) => (
-                <li key={step.label} className="relative flex gap-4 pb-5 last:pb-0">
-                  {index < exampleSteps.length - 1 ? (
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "absolute top-7 left-[0.8125rem] h-[calc(100%-1.75rem)] w-px",
-                        step.state === "done" ? "bg-primary/40" : "bg-border",
-                      )}
-                    />
-                  ) : null}
+            <ol className="mt-3 space-y-2.5">
+              {exampleSteps.slice(1, 5).map((step, index) => (
+                <li key={step.label} className="flex items-center gap-3">
                   <span
                     className={cn(
-                      "relative flex size-6.5 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+                      "flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
                       step.state === "done" && "border-primary bg-primary text-primary-foreground",
                       step.state === "current" && "border-urgent bg-urgent-soft text-urgent",
                       step.state === "upcoming" && "bg-background text-muted-foreground",
                     )}
                   >
-                    {step.state === "done" ? (
-                      <Check className="size-3.5" aria-hidden="true" />
-                    ) : (
-                      index + 1
-                    )}
+                    {step.state === "done" ? <Check className="size-3.5" aria-hidden="true" /> : index + 2}
                   </span>
-                  <div className="min-w-0 pt-0.5">
-                    <p
-                      className={cn(
-                        "text-sm font-semibold",
-                        step.state === "upcoming" ? "text-muted-foreground" : "text-foreground",
-                      )}
-                    >
-                      {step.label}
-                    </p>
-                    <p className="mt-0.5 text-sm text-muted-foreground">{step.detail}</p>
-                  </div>
+                  <span className={cn("text-sm", step.state === "upcoming" ? "text-muted-foreground" : "font-medium text-foreground")}>
+                    {step.label}
+                  </span>
                 </li>
               ))}
             </ol>
+            <figcaption className="mt-3 flex items-center gap-2 border-t pt-3 text-xs text-muted-foreground">
+              <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
+              No work starts until you approve the quotation.
+            </figcaption>
           </div>
-          <figcaption className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-            <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
-            No repair work starts until you approve the quotation.
-          </figcaption>
         </figure>
       </Container>
     </section>

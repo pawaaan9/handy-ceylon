@@ -3,11 +3,11 @@
  * firestore.rules and docs/ARCHITECTURE.md.
  */
 export const collections = {
-  users: "users",
-  customerProfiles: "customerProfiles",
+  /** One collection per role; a uid's role is the collection its account lives in. */
+  customers: "customers",
+  technicians: "technicians",
+  admins: "admins",
   technicianApplications: "technicianApplications",
-  technicianProfiles: "technicianProfiles",
-  technicianPrivate: "technicianPrivate",
   /** phoneIndex/{E.164} → { uid }; enforces one account per mobile number. */
   phoneIndex: "phoneIndex",
   serviceCategories: "serviceCategories",
@@ -18,10 +18,11 @@ export const collections = {
   bookings: "bookings",
   conversations: "conversations",
   reviews: "reviews",
+  notifications: "notifications",
 } as const;
 
 export const subcollections = {
-  /** customerProfiles/{uid}/addresses/{addressId} */
+  /** customers/{uid}/addresses/{addressId} */
   addresses: "addresses",
   /** serviceRequests/{requestId}/offers/{technicianId} */
   offers: "offers",
@@ -31,12 +32,20 @@ export const subcollections = {
   statusHistory: "statusHistory",
   /** conversations/{conversationId}/messages/{messageId} */
   messages: "messages",
-  /** users/{uid}/notifications/{notificationId} */
-  notifications: "notifications",
+  /** notifications/{uid}/items/{notificationId} */
+  notificationItems: "items",
 } as const;
 
 /** Cloud Storage paths. Keep in sync with storage.rules. */
 export const storagePaths = {
-  avatarPrefix: (uid: string) => `users/${uid}/avatar/`,
+  avatarPrefix: (uid: string) => `avatars/${uid}/`,
   technicianDocumentPrefix: (uid: string) => `technicianDocuments/${uid}/`,
 } as const;
+
+import type { UserRole } from "@/features/auth/roles";
+
+export const roleCollections = {
+  customer: collections.customers,
+  technician: collections.technicians,
+  admin: collections.admins,
+} as const satisfies Record<UserRole, string>;

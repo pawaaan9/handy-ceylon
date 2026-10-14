@@ -1,4 +1,5 @@
 import type { AccountStatus, UserRole } from "@/features/auth/roles";
+
 import type {
   BookingMode,
   BookingStatus,
@@ -23,7 +24,7 @@ export type LkrCents = number;
 
 export type GeoLocation = { lat: number; lng: number; geohash: string };
 
-/** customerProfiles/{uid}/addresses/{addressId} — written only by the server. */
+/** customers/{uid}/addresses/{addressId} — written only by the server. */
 export type AddressDoc = {
   label: string;
   recipientName: string;
@@ -46,32 +47,38 @@ export type AddressDoc = {
  */
 export type AddressSnapshot = Omit<AddressDoc, "createdAt" | "updatedAt"> & { addressId: string };
 
-/** users/{uid} — written only by the server. */
-export type UserDoc = {
+/**
+ * Fields shared by every account document. Each role has its own collection
+ * (customers, technicians, admins); all are written only by the server.
+ * Email verification is NOT mirrored here — read it from Firebase Auth.
+ */
+export type AccountBase = {
   uid: string;
-  role: UserRole; // mirrors the custom claim; authoritative for server checks
   accountStatus: AccountStatus;
   displayName: string;
-  email: string;
-  phoneNumber: string; // E.164; unique via phoneIndex
-  photoURL: string | null; // download URL of users/{uid}/avatar/*, set by the server
+  email: string | null; // null for mobile-only sign-ups until they link an email
+  phoneNumber: string | null; // E.164; unique via phoneIndex
+  photoURL: string | null; // download URL of avatars/{uid}/*, set by the server
   photoPath: string | null;
-  termsAcceptedAt: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 };
-// Email verification is NOT mirrored here; read it from Firebase Auth.
+
+/** customers/{uid} — every public sign-up starts here. */
+export type CustomerDoc = AccountBase & {
+  phoneNumber: string;
+  defaultAddressId: string | null; // → ./addresses/{addressId}
+  termsAcceptedAt: Timestamp;
+};
+
+/** admins/{uid} — created only by scripts/grant-admin.mjs. */
+export type AdminDoc = AccountBase & {
+  grantedAt: Timestamp;
+  grantedBy: string; // "grant-admin-script"
+};
 
 /** phoneIndex/{E.164} — server-only uniqueness index. */
 export type PhoneIndexDoc = { uid: string; createdAt: Timestamp };
-
-/** customerProfiles/{uid} — written only by the server. */
-export type CustomerProfileDoc = {
-  uid: string;
-  defaultAddressId: string | null; // → ./addresses/{addressId}
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-};
 
 /** technicianApplications/{uid} — one per applicant; written only by the server. */
 export type TechnicianApplicationDoc = {
@@ -98,11 +105,14 @@ export type TechnicianApplicationDoc = {
   updatedAt: Timestamp;
 };
 
-/** technicianProfiles/{uid} — public once approved. */
-export type TechnicianProfileDoc = {
-  uid: string;
-  displayName: string;
-  photoURL: string | null;
+/**
+ * technicians/{uid} — created when an admin approves an application. Holds the
+ * account and the professional profile; private (owner + admin). Public
+ * technician details are served by the server with contact fields removed.
+ * The approved person's customers/{uid} document is kept (addresses etc.).
+ */
+export type TechnicianDoc = AccountBase & {
+  phoneNumber: string;
   bio: string; // [owner]
   categoryIds: string[]; // [owner] → serviceCategories
   serviceDistricts: District[]; // [owner]
@@ -112,20 +122,12 @@ export type TechnicianProfileDoc = {
   city: string;
   availability: "online" | "offline"; // [owner]
   baseLocation?: GeoLocation; // [server] used for nearby matching
-  verificationStatus: "approved" | "suspended"; // [server] created on approval
+  verificationStatus: "approved" | "suspended"; // [server]
   ratingAverage: number; // [server] aggregated from reviews
   ratingCount: number; // [server]
   completedJobs: number; // [server]
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-};
-
-/** technicianPrivate/{uid} — identity documents; owner + admin only. */
-export type TechnicianPrivateDoc = {
-  uid: string;
-  nicNumber: string;
-  documentPaths: string[]; // Storage: technicianDocuments/{uid}/...
-  reviewNotes?: string; // admin only
+  approvedAt: Timestamp;
+  approvedBy: string; // admin uid
 };
 
 /** serviceCategories/{slug} — public when active; managed by admins / seed script. */
@@ -260,7 +262,7 @@ export type MessageDoc = {
   createdAt: Timestamp;
 };
 
-/** users/{uid}/notifications/{notificationId} */
+/** notifications/{uid}/items/{notificationId} — any role. */
 export type NotificationDoc = {
   type:
     | "request_offer"

@@ -1,14 +1,15 @@
-import { ArrowRight, CalendarClock, HardHat, MapPin, UserRound } from "lucide-react";
+import { CalendarClock, FileText, HardHat, MapPin, UserRound, Wrench, Zap } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { PageHeader, Panel } from "@/components/app-shell/page-header";
+import { ActionTile, Meter, SectionTitle, WelcomeBanner } from "@/components/app-shell/dashboard-kit";
 import { VerificationBanner } from "@/components/app-shell/verification-banner";
 import { Button } from "@/components/ui/button";
-import { technicianRoutes } from "@/features/auth/redirects";
-import { getApplicationStatus, requireRole } from "@/features/auth/server/dal";
+import { routes } from "@/config/site";
 import { addressLines } from "@/features/addresses/format";
 import { getDefaultAddress } from "@/features/addresses/server/repository";
+import { technicianRoutes } from "@/features/auth/redirects";
+import { getApplicationStatus, requireRole } from "@/features/auth/server/dal";
 import { applicationStatusLabels } from "@/features/technicians/types";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -20,86 +21,90 @@ export default async function CustomerDashboardPage() {
     getApplicationStatus(user.uid),
   ]);
   const firstName = user.displayName.split(" ")[0] || "there";
-  const missing = [
-    !user.photoURL && "a profile photo",
-    !defaultAddress && "a service address",
-  ].filter(Boolean) as string[];
+  const checklist = [Boolean(user.photoURL), Boolean(defaultAddress), Boolean(user.email && user.emailVerified)];
+  const done = checklist.filter(Boolean).length;
 
   return (
     <div className="space-y-8">
-      <PageHeader title={`Hello, ${firstName}`} description="Manage your account and get ready to book." />
+      <WelcomeBanner
+        eyebrow="Customer dashboard"
+        title={`Hello, ${firstName}`}
+        description="Book trusted technicians, keep your addresses ready and track every job here."
+        actions={
+          <>
+            <Button asChild variant="urgent" size="xl">
+              <Link href={routes.getHelpNow}>
+                <Zap data-icon="inline-start" aria-hidden="true" />
+                Get Help Now
+              </Link>
+            </Button>
+            <Button asChild size="xl" className="bg-white text-primary hover:bg-white/90">
+              <Link href={routes.getAQuote}>
+                <FileText data-icon="inline-start" aria-hidden="true" />
+                Get a Quote
+              </Link>
+            </Button>
+          </>
+        }
+      />
+
       {!user.emailVerified ? <VerificationBanner email={user.email} /> : null}
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <Panel title="Your bookings">
-          <div className="flex flex-col items-start gap-4">
-            <div className="flex gap-3 text-sm text-muted-foreground">
-              <CalendarClock className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
-              <p>
-                You don&apos;t have any bookings yet. Get Help Now and Get a Quote open soon — your requests
-                and quotations will appear here.
-              </p>
-            </div>
-            <Button asChild variant="outline" size="lg">
-              <Link href="/services">Browse services</Link>
-            </Button>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ActionTile
+          href={routes.services}
+          icon={Wrench}
+          tone="primary"
+          title="Browse services"
+          description="Plumbing, electrical, AC, cleaning and more."
+        />
+        <ActionTile
+          href="/customer/addresses"
+          icon={MapPin}
+          tone="urgent"
+          title="Saved addresses"
+          description={
+            defaultAddress
+              ? `${defaultAddress.label} · ${addressLines(defaultAddress)[1]}`
+              : "Add where technicians should come."
+          }
+        />
+        <ActionTile href="/customer/profile" icon={UserRound} tone="navy" title="Profile" description="Photo and contact details.">
+          <div className="mt-4">
+            <Meter value={done} max={checklist.length} label="Profile completeness" />
           </div>
-        </Panel>
-
-        <Panel title="Profile and addresses">
-          <div className="space-y-4 text-sm">
-            <p className="flex gap-3 text-muted-foreground">
-              <MapPin className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
-              {defaultAddress ? (
-                <span>
-                  <span className="font-medium text-foreground">{defaultAddress.label}:</span>{" "}
-                  {addressLines(defaultAddress).slice(0, 2).join(", ")}
-                </span>
-              ) : (
-                <span>No service address yet.</span>
-              )}
-            </p>
-            {missing.length > 0 ? (
-              <p className="flex gap-3 text-muted-foreground">
-                <UserRound className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
-                <span>Add {missing.join(" and ")} so technicians can serve you faster.</span>
-              </p>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline" size="lg">
-                <Link href="/customer/addresses">
-                  Manage addresses
-                  <ArrowRight data-icon="inline-end" aria-hidden="true" />
-                </Link>
-              </Button>
-              <Button asChild variant="ghost" size="lg">
-                <Link href="/customer/profile">Edit profile</Link>
-              </Button>
-            </div>
-          </div>
-        </Panel>
+        </ActionTile>
       </div>
 
-      <Panel>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex gap-3">
-            <HardHat className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
-            <div>
-              <p className="font-semibold text-foreground">Work as a technician</p>
-              <p className="text-sm text-muted-foreground">
-                {applicationStatus
-                  ? `Application status: ${applicationStatusLabels[applicationStatus]}.`
-                  : "Apply to receive job requests from customers in your area."}
-              </p>
-            </div>
+      <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+        <section className="rounded-2xl border bg-card p-6">
+          <SectionTitle>Your bookings</SectionTitle>
+          <div className="mt-6 flex flex-col items-center rounded-xl border border-dashed bg-sand/50 px-6 py-10 text-center">
+            <span className="flex size-12 items-center justify-center rounded-full bg-background text-primary">
+              <CalendarClock className="size-6" aria-hidden="true" />
+            </span>
+            <p className="mt-3 font-semibold text-foreground">No bookings yet</p>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+              Get Help Now and Get a Quote open soon. Your requests, quotations and visits will appear here.
+            </p>
           </div>
-          <Button asChild variant="outline" size="lg">
+        </section>
+
+        <section className="relative overflow-hidden rounded-2xl bg-navy p-6 text-navy-foreground">
+          <HardHat className="size-8 text-urgent" aria-hidden="true" />
+          <h2 className="mt-4 text-lg font-semibold">Work as a technician</h2>
+          <p className="mt-1 text-sm text-white/70">
+            {applicationStatus
+              ? `Your application: ${applicationStatusLabels[applicationStatus]}.`
+              : "Receive job requests from customers in the districts you choose."}
+          </p>
+          <Button asChild variant="outline" size="lg" className="mt-5 border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white">
             <Link href={applicationStatus ? technicianRoutes.application : technicianRoutes.register}>
               {applicationStatus ? "View application" : "Apply now"}
             </Link>
           </Button>
-        </div>
-      </Panel>
+        </section>
+      </div>
     </div>
   );
 }

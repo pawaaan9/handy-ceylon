@@ -2,10 +2,16 @@
 
 import {
   browserLocalPersistence,
+  browserPopupRedirectResolver,
   browserSessionPersistence,
+  GoogleAuthProvider,
+  RecaptchaVerifier,
   setPersistence,
   signInWithEmailAndPassword,
+  signInWithPhoneNumber,
+  signInWithPopup,
   signOut,
+  type ConfirmationResult,
   type User,
 } from "firebase/auth";
 
@@ -20,6 +26,32 @@ export async function signInWithPassword(email: string, password: string, rememb
   await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
   const credential = await signInWithEmailAndPassword(auth, email, password);
   return credential.user;
+}
+
+/** Google sign-in (popup). New Google users finish their profile afterwards. */
+export async function signInWithGoogle(remember: boolean): Promise<User> {
+  const { auth } = getFirebaseClient();
+  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  const credential = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
+  return credential.user;
+}
+
+/** Invisible reCAPTCHA bound to a button/container element (required by Firebase phone auth). */
+export function createRecaptcha(container: HTMLElement): RecaptchaVerifier {
+  return new RecaptchaVerifier(getFirebaseClient().auth, container, { size: "invisible" });
+}
+
+/** Sends the SMS code. `phoneNumber` must already be E.164 (+94…). */
+export async function sendPhoneCode(
+  phoneNumber: string,
+  verifier: RecaptchaVerifier,
+  remember: boolean,
+): Promise<ConfirmationResult> {
+  const { auth } = getFirebaseClient();
+  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+  return signInWithPhoneNumber(auth, phoneNumber, verifier);
 }
 
 /** Creates the server session cookie from the signed-in browser user. */

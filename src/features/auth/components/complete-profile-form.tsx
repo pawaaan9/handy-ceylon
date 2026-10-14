@@ -8,7 +8,7 @@ import { Controller, useForm } from "react-hook-form";
 import { FormAlert } from "@/components/forms/form-alert";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 import {
@@ -19,7 +19,14 @@ import {
 import { navigateAfterAuthChange } from "../client/session";
 import { completeProfileAction } from "../server/actions";
 
-export function CompleteProfileForm({ defaultName }: { defaultName: string }) {
+export function CompleteProfileForm({
+  defaultName,
+  verifiedPhone,
+}: {
+  defaultName: string;
+  /** Set when the account signed in with a mobile number (already verified by SMS). */
+  verifiedPhone: string | null;
+}) {
   const [formError, setFormError] = useState<string | null>(null);
   const form = useForm<CompleteProfileFormValues, unknown, CompleteProfileInput>({
     resolver: zodResolver(completeProfileSchema),
@@ -55,7 +62,14 @@ export function CompleteProfileForm({ defaultName }: { defaultName: string }) {
             </Field>
           )}
         />
-        <Controller
+        {verifiedPhone ? (
+          <Field>
+            <FieldLabel htmlFor="verifiedPhone">Mobile number</FieldLabel>
+            <Input id="verifiedPhone" value={verifiedPhone} readOnly disabled />
+            <FieldDescription>Verified by SMS.</FieldDescription>
+          </Field>
+        ) : (
+          <Controller
           control={form.control}
           name="phoneNumber"
           render={({ field, fieldState }) => (
@@ -73,6 +87,7 @@ export function CompleteProfileForm({ defaultName }: { defaultName: string }) {
             </Field>
           )}
         />
+        )}
         <Controller
           control={form.control}
           name="acceptTerms"

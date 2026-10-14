@@ -28,7 +28,7 @@ service firebase.storage {
     }
 
     // Profile photos — public read (technician photos are shown to customers).
-    match /users/{userId}/avatar/{fileName} {
+    match /avatars/{userId}/{fileName} {
       allow read: if true;
       allow create: if isSelf(userId)
         && request.resource.contentType.matches('image/(jpeg|png|webp)')

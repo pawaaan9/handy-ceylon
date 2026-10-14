@@ -50,13 +50,13 @@ async function CategoryGrid() {
   }
   return (
     <ul className="mt-12 grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 lg:grid-cols-4">
-      {categories.map((category) => (
+      {categories.map((category, index) => (
         <li key={category.id} className="bg-card">
           <Link
             href={`/services/${category.id}`}
             className="block h-full p-6 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
           >
-            <CategoryMedia category={category} className="size-10" />
+            <CategoryMedia category={category} index={index} className="size-10" />
             <h3 className="mt-4 text-base font-semibold text-foreground">{category.name}</h3>
             <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{category.description}</p>
           </Link>

@@ -3,9 +3,11 @@ import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 import { getDownloadURL } from "firebase-admin/storage";
 
-import { adminAuth, adminDb, adminStorage } from "@/lib/firebase/admin";
-import { collections, storagePaths } from "@/lib/firestore/collections";
+import { adminAuth, adminStorage } from "@/lib/firebase/admin";
+import { storagePaths } from "@/lib/firestore/collections";
 import { UserFacingError } from "@/lib/errors";
+
+import { accountRef, resolveAccount } from "./account-store";
 
 export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 export const AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
@@ -21,11 +23,13 @@ export function isOwnedPath(path: string, prefix: string): boolean {
 }
 
 /**
- * The browser uploads to users/{uid}/avatar/* (Storage Rules restrict this to
+ * The browser uploads to avatars/{uid}/* (Storage Rules restrict this to
  * the owner, images, <5 MB). The server then re-checks the object itself and
  * derives the URL — a client-supplied URL is never stored.
  */
 export async function setProfilePhoto(uid: string, storagePath: string): Promise<string> {
+  const account = await resolveAccount(uid);
+  if (!account) throw new UserFacingError("Finish setting up your account first.");
   if (!isOwnedPath(storagePath, storagePaths.avatarPrefix(uid))) {
     throw new UserFacingError("That photo can't be used. Please upload it again.");
   }
@@ -42,10 +46,10 @@ export async function setProfilePhoto(uid: string, storagePath: string): Promise
   }
 
   const photoURL = await getDownloadURL(file);
-  const userRef = adminDb().collection(collections.users).doc(uid);
-  const previousPath = (await userRef.get()).get("photoPath") as string | null | undefined;
+  const ref = accountRef(account.role, uid);
+  const previousPath = account.data.photoPath;
 
-  await userRef.update({ photoURL, photoPath: storagePath, updatedAt: FieldValue.serverTimestamp() });
+  await ref.update({ photoURL, photoPath: storagePath, updatedAt: FieldValue.serverTimestamp() });
   await adminAuth().updateUser(uid, { photoURL });
 
   if (previousPath && previousPath !== storagePath) {

@@ -3,7 +3,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { WelcomeBanner } from "@/components/app-shell/dashboard-kit";
 import { PageHeader, Panel } from "@/components/app-shell/page-header";
+import { LinkEmailForm } from "@/features/auth/components/link-email-form";
 import { FormAlert } from "@/components/forms/form-alert";
 import { Button } from "@/components/ui/button";
 import { authRoutes, roleHomes, technicianRoutes } from "@/features/auth/redirects";
@@ -29,7 +31,10 @@ export default async function TechnicianRegisterPage() {
   if (!user) {
     return (
       <div className="mx-auto max-w-3xl space-y-6">
-        <PageHeader
+        <WelcomeBanner
+          tone="navy"
+          scene="tools"
+          eyebrow="For skilled professionals"
           title="Become a Handy Ceylon technician"
           description="Join a network of verified home-service professionals across Sri Lanka."
         />
@@ -75,6 +80,20 @@ export default async function TechnicianRegisterPage() {
 
   const application = await getApplication(user.uid);
   if (application && application.applicationStatus !== "rejected") redirect(technicianRoutes.application);
+
+  if (!user.email) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-6">
+        <PageHeader
+          title="Add an email to apply"
+          description="We review applications and send decisions by email, so a verified email address is required."
+        />
+        <Panel>
+          <LinkEmailForm returnTo={technicianRoutes.register} />
+        </Panel>
+      </div>
+    );
+  }
 
   const verified = await isEmailVerified(user.uid);
   if (!verified) {
@@ -130,9 +149,12 @@ export default async function TechnicianRegisterPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader
-        title={application ? "Update your application" : "Technician application"}
-        description="Tell us about your experience. Our team reviews every application before it goes live."
+      <WelcomeBanner
+        tone="navy"
+        scene="tools"
+        eyebrow="Technician application"
+        title={application ? "Update your application" : "Tell us about your work"}
+        description="Our team reviews every application before technician tools unlock."
       />
       {application?.rejectionReason ? (
         <FormAlert tone="error" title="What to fix before resubmitting">

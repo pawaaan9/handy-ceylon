@@ -1,8 +1,12 @@
 import { Suspense } from "react";
 
-import { AppHeader, AppHeaderSkeleton } from "@/components/app-shell/app-header";
+import {
+  AppHeader,
+  AppHeaderSkeleton,
+  AppSidebar,
+  AppSidebarSkeleton,
+} from "@/components/app-shell/app-header";
 import { PageSkeleton } from "@/components/app-shell/page-header";
-import { Container } from "@/components/layout/container";
 import { FirebaseAuthProvider } from "@/features/auth/components/firebase-auth-provider";
 import { getCurrentUser } from "@/features/auth/server/dal";
 
@@ -12,17 +16,22 @@ import { getCurrentUser } from "@/features/auth/server/dal";
  */
 export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
-    <div className="flex min-h-full flex-1 flex-col bg-muted/40">
-      <Suspense fallback={<AppHeaderSkeleton />}>
-        <AppHeader />
+    <div className="flex min-h-dvh flex-1 bg-sand/40">
+      <Suspense fallback={<AppSidebarSkeleton />}>
+        <AppSidebar />
       </Suspense>
-      <main id="main" className="flex-1 py-8 sm:py-10">
-        <Container>
-          <Suspense fallback={<PageSkeleton />}>
-            <ClientAuth>{children}</ClientAuth>
-          </Suspense>
-        </Container>
-      </main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Suspense fallback={<AppHeaderSkeleton />}>
+          <AppHeader />
+        </Suspense>
+        <main id="main" className="flex-1 px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
+          <div className="mx-auto w-full max-w-6xl">
+            <Suspense fallback={<PageSkeleton />}>
+              <ClientAuth>{children}</ClientAuth>
+            </Suspense>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

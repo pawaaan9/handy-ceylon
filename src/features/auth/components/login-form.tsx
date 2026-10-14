@@ -9,7 +9,6 @@ import { Controller, useForm } from "react-hook-form";
 import { FormAlert } from "@/components/forms/form-alert";
 import { PasswordInput } from "@/components/forms/password-input";
 import { SubmitButton } from "@/components/forms/submit-button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { isFirebaseClientConfigured } from "@/config/env.client";
@@ -24,11 +23,11 @@ import {
 import { authRoutes } from "../redirects";
 import { loginSchema, type LoginFormValues } from "../schemas";
 
-export function LoginForm({ next, notice }: { next: string | null; notice?: string | null }) {
+export function LoginForm({ next, remember }: { next: string | null; remember: boolean }) {
   const [formError, setFormError] = useState<string | null>(null);
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "", remember: false },
+    defaultValues: { email: "", password: "" },
     mode: "onTouched",
   });
 
@@ -41,8 +40,8 @@ export function LoginForm({ next, notice }: { next: string | null; notice?: stri
   async function onSubmit(values: LoginFormValues) {
     setFormError(null);
     try {
-      const user = await signInWithPassword(values.email, values.password, values.remember);
-      const result = await establishServerSession(user, values.remember, next);
+      const user = await signInWithPassword(values.email, values.password, remember);
+      const result = await establishServerSession(user, remember, next);
       if (!result.ok) {
         setFormError(result.error);
         return;
@@ -59,7 +58,6 @@ export function LoginForm({ next, notice }: { next: string | null; notice?: stri
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
       <FieldGroup className="gap-5">
-        {notice ? <FormAlert tone="info">{notice}</FormAlert> : null}
         {formError ? <FormAlert tone="error">{formError}</FormAlert> : null}
 
         <Controller
@@ -102,23 +100,6 @@ export function LoginForm({ next, notice }: { next: string | null; notice?: stri
                 aria-invalid={fieldState.invalid}
               />
               <FieldError errors={[fieldState.error]} />
-            </Field>
-          )}
-        />
-
-        <Controller
-          control={form.control}
-          name="remember"
-          render={({ field }) => (
-            <Field orientation="horizontal">
-              <Checkbox
-                id="remember"
-                checked={field.value}
-                onCheckedChange={(checked) => field.onChange(checked === true)}
-              />
-              <FieldLabel htmlFor="remember" className="font-normal">
-                Keep me signed in for 14 days
-              </FieldLabel>
             </Field>
           )}
         />

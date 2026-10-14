@@ -14,6 +14,21 @@ const messages: Record<string, string> = {
   "auth/requires-recent-login": "Please log in again to continue.",
   "auth/operation-not-allowed":
     "Email sign-in is not enabled for this project yet. Please contact support.",
+  "auth/popup-closed-by-user": "The Google window was closed before signing in.",
+  "auth/cancelled-popup-request": "The Google window was closed before signing in.",
+  "auth/popup-blocked": "Your browser blocked the Google window. Allow pop-ups for this site and try again.",
+  "auth/account-exists-with-different-credential":
+    "This email is already registered with a password. Log in with your email and password instead.",
+  "auth/credential-already-in-use": "This email is already linked to another account.",
+  "auth/email-already-in-use": "This email is already linked to another account.",
+  "auth/provider-already-linked": "An email is already linked to this account.",
+  "auth/invalid-phone-number": "Enter a valid Sri Lankan mobile number.",
+  "auth/missing-phone-number": "Enter your mobile number.",
+  "auth/invalid-verification-code": "That code is incorrect. Check the SMS and try again.",
+  "auth/code-expired": "That code has expired. Request a new one.",
+  "auth/captcha-check-failed": "We couldn't verify this request. Refresh the page and try again.",
+  "auth/quota-exceeded": "We can't send more codes right now. Please try again later.",
+  "auth/unauthorized-domain": "Sign-in isn't enabled for this website address yet.",
   "auth/configuration-not-found":
     "Authentication is not configured for this project yet. Please contact support.",
 };
