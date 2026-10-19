@@ -134,6 +134,8 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Written only by the server (customers create and cancel through Server
+    // Actions), so no client can set a status or assign a technician.
     match /serviceRequests/{requestId} {
       allow read: if isAdmin()
         || isOwner(resource.data.customerId)
@@ -142,6 +144,11 @@ service cloud.firestore {
       allow write: if false;
 
       match /private/{docId} {
+        allow read: if isAdmin() || isRequestCustomer(requestId) || isAssignedTechnician(requestId);
+        allow write: if false;
+      }
+
+      match /history/{eventId} {
         allow read: if isAdmin() || isRequestCustomer(requestId) || isAssignedTechnician(requestId);
         allow write: if false;
       }

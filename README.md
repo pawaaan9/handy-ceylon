@@ -8,9 +8,9 @@ electricians, AC technicians, cleaners, painters, carpenters and more using **Ge
 Tailwind CSS 4 · shadcn/ui (Radix) · Lucide · Zod · React Hook Form · Firebase Auth,
 Firestore, Storage · Firebase Admin SDK.
 
-**Status:** foundation, landing page, authentication & user management, service catalogue and
-saved addresses are complete. Booking flows (Get Help Now / Get a Quote) come next — those
-pages say so honestly.
+**Status:** foundation, landing page, authentication & user management, service catalogue, saved
+addresses and **customer service requests** (Phase 4) are complete. Technician matching, offers and
+quotations come next: submitted requests stay `open` until those phases land.
 
 ## Features
 
@@ -22,6 +22,9 @@ pages say so honestly.
 - **Technician applications** with document uploads; admins approve/reject; approval creates the technician account.
 - **Service catalogue** in Firestore with search, category filters, subcategories and active/inactive control.
 - **Saved addresses** with a default address, full validation and ownership enforced on the server.
+- **Service requests**: a multi-step form (service → address → details → photos/videos → review) for
+  **Get Help Now**, **Get a Quote › Technician Visit** and **Get a Quote › Quote Online**, with draft
+  saving, upload progress, duplicate-safe submission, a request list, a detail page and cancellation.
 - Role-protected customer, technician and admin areas; flat, gradient-free UI with split-screen auth pages.
 
 ## Requirements
@@ -46,6 +49,8 @@ npm run dev                     # http://localhost:3000
 |---|---|
 | `npm run dev` / `build` / `start` | Develop, build, serve |
 | `npm run lint` · `npm run typecheck` | ESLint · route types + `tsc --noEmit` |
+| `npm test` | Unit tests (Vitest) |
+| `npm run test:emulators` | Repository + Security Rules tests against the Auth/Firestore/Storage emulators (Java 21+) |
 | `npm run seed:catalogue [-- --dry-run]` | Seed/refresh the service catalogue (idempotent, never deletes) |
 | `npm run admin:grant -- <email> [--revoke]` | Grant or revoke the administrator role |
 | `npm run emulators` | Start the Firebase Emulator Suite |
@@ -87,6 +92,9 @@ Never prefix Admin credentials with `NEXT_PUBLIC_` or commit `.env.local` / serv
    ```
 7. Seed the catalogue: `npm run seed:catalogue`.
 8. Create the first administrator — see below.
+9. *Recommended:* in **Google Cloud Console → Cloud Storage → your bucket → Lifecycle**, add a rule
+   to delete objects with the prefix `requestMedia/` older than 7 days. This removes uploads from
+   request drafts that were never submitted.
 
 ### First administrator
 
@@ -116,14 +124,36 @@ sign-in shows the emulator's test account picker.
 | `technicianApplications/{uid}` | Applications and review decisions |
 | `serviceCategories/{slug}`, `services/{id}` | Catalogue (active flags, subcategories) |
 | `phoneIndex/{E.164}` | One account per mobile number |
+| `serviceRequests/{id}` (+ `/private/details`, `/history/{id}`) | Customer service requests — see below |
 | `notifications/{uid}/items/{id}` | Notifications for any role |
 
-Security Rules: `firestore.rules` and `storage.rules`.
+Security Rules: `firestore.rules` and `storage.rules`. Full field-level types: `src/lib/firestore/models.ts`.
+
+### Service requests
+
+| Path | Fields | Who can read |
+|---|---|---|
+| `serviceRequests/{id}` | `customerId`, `mode` (`urgent` · `quote_visit` · `quote_online`), `status` (`open` · `assigned` · `cancelled` · `expired`), `categoryId`, `serviceId`, `catalogue` (category/service/subcategory names at submission), `addressId`, `city`, `district`, `title`, `description`, `urgency`, `preferredSchedule` (`asap` · `flexible` · `scheduled` + date & time slot, Asia/Colombo), `measurements`, `attachments[]`, `selectedTechnicianId`, `acceptedQuotationId`, `bookingId`, `offerCount`, `quotationCount`, `cancellation`, `expiresAt`, `createdAt`, `updatedAt` | Owner, admins, the assigned technician; technicians while `open` |
+| `…/private/details` | `address` (full snapshot of the saved address), `accessInstructions` | Owner, admins, assigned technician |
+| `…/history/{eventId}` | Append-only audit log: `from`, `to`, `actorId`, `actorRole`, `note`, `at` | Owner, admins, assigned technician |
+
+- **Writes are server-only.** Customers create and cancel requests through Server Actions; rules deny
+  every client write, so nobody can set a status or assign a technician from the browser.
+- **IDs and timestamps** are generated on the server. The document id is derived from the customer's uid
+  and a per-submission key, so double-clicks and retries resolve to the same request.
+- **Address snapshot:** the chosen address is copied into `private/details`, so later edits to (or
+  deletion of) the saved address never change the request.
+- **Money** is stored as integer LKR cents (`LkrCents`) on offers, quotations and bookings, never as floats.
+- **Attachments** (up to 6: photos ≤ 10 MB; up to 2 videos ≤ 50 MB / 60 s) upload to the customer's
+  draft folder `requestMedia/{uid}/{submissionKey}/`. On submission the server re-reads each file's
+  real type and size, then copies it to the server-owned `serviceRequests/{id}/media/` and deletes the draft.
+- Customers may have at most 10 open requests. `expiresAt` (24 h urgent, 7 days quotes) is recorded
+  now and enforced when matching is added.
 
 ## Security model
 
 - The server decides roles from the role collections; the browser's claims are only used by Security Rules.
-- All account, address, application and catalogue writes go through Server Actions using the Admin SDK,
+- All account, address, application, catalogue and service-request writes go through Server Actions using the Admin SDK,
   with Zod validation, session-derived user ids and state-machine checks. Rules deny direct client writes.
 - Verified email/phone values always come from Firebase Auth, never from form input.
 

@@ -69,19 +69,24 @@ export async function assertActiveCategoryIds(ids: readonly string[]): Promise<v
   }
 }
 
-export async function getSelectableService(serviceId: string): Promise<ServiceView> {
+export type SelectableService = ServiceView & { categoryName: string; subcategoryName: string | null };
+
+/** Fresh read of one service; refuses it unless it, its category and subcategory are all active. */
+export async function getSelectableService(serviceId: string): Promise<SelectableService> {
   const db = adminDb();
   const snap = await db.collection(collections.services).doc(serviceId).get();
   const data = snap.data() as ServiceDoc | undefined;
-  if (!data || data.active !== true) throw new UserFacingError("This service is not available.");
+  if (!data || data.active !== true) throw new UserFacingError("This service is not available.", "serviceId");
 
   const category = await db.collection(collections.serviceCategories).doc(data.categoryId).get();
-  if (category.get("active") !== true) throw new UserFacingError("This service is not available.");
+  if (category.get("active") !== true) throw new UserFacingError("This service is not available.", "serviceId");
+  let subcategoryName: string | null = null;
   if (data.subcategoryId) {
     const sub = ((category.get("subcategories") ?? []) as ServiceCategoryDoc["subcategories"]).find(
       (s) => s.id === data.subcategoryId,
     );
-    if (!sub?.active) throw new UserFacingError("This service is not available.");
+    if (!sub?.active) throw new UserFacingError("This service is not available.", "serviceId");
+    subcategoryName = sub.name;
   }
   return {
     id: snap.id,
@@ -89,5 +94,7 @@ export async function getSelectableService(serviceId: string): Promise<ServiceVi
     subcategoryId: data.subcategoryId ?? null,
     name: data.name,
     description: data.description,
+    categoryName: category.get("name") as string,
+    subcategoryName,
   };
 }

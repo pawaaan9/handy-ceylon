@@ -8,6 +8,12 @@ import type {
   ServiceRequestStatus,
 } from "@/features/bookings/types";
 import type { sriLankaDistricts } from "@/features/bookings/schemas";
+import type {
+  AttachmentKind,
+  CancellationReason,
+  PreferredSchedule,
+  Urgency,
+} from "@/features/requests/types";
 import type { TechnicianApplicationStatus } from "@/features/technicians/types";
 
 /**
@@ -157,34 +163,74 @@ export type ServiceDoc = {
   updatedAt: Timestamp;
 };
 
-/** serviceRequests/{requestId} — all [server]. Precise address lives in ./private/location. */
+/**
+ * serviceRequests/{requestId} — all [server]. The id is derived on the server
+ * from the customer's uid and a per-submission key, so a retried or
+ * double-clicked submission resolves to the same document.
+ *
+ * Technicians may read open requests (to respond in later phases), so this
+ * document holds only the area (city/district). The precise address snapshot
+ * and access instructions live in ./private/details.
+ */
 export type ServiceRequestDoc = {
   customerId: string;
-  categoryId: string;
-  serviceId: string | null; // → services; validated as active at creation
-  addressId: string; // the saved address used (may later be edited or deleted)
+  /** Booking method: urgent = Get Help Now; quote_visit / quote_online = Get a Quote options. */
   mode: BookingMode;
   status: ServiceRequestStatus;
-  title: string;
-  description: string;
+  categoryId: string; // → serviceCategories
+  serviceId: string; // → services; validated as active at creation
+  /** Readable names captured at creation, so renamed or retired services still display. */
+  catalogue: { categoryName: string; serviceName: string; subcategoryName: string | null };
+  addressId: string; // the saved address used (may later be edited or deleted)
   city: string;
   district: District;
-  approxGeohash: string; // ~1 km precision for technician matching
-  media: { storagePath: string; contentType: string }[];
-  measurements?: string;
-  preferredWindow?: { start: Timestamp; end: Timestamp };
-  selectedTechnicianId: string | null;
+  title: string;
+  description: string;
+  urgency: Urgency;
+  preferredSchedule: PreferredSchedule;
+  measurements: string | null; // quote_online only
+  /** Copied out of the customer's draft folder into serviceRequests/{requestId}/media/. */
+  attachments: RequestAttachment[];
+  selectedTechnicianId: string | null; // [server] set only when a technician is assigned
   acceptedQuotationId: string | null;
   bookingId: string | null;
   offerCount: number;
   quotationCount: number;
+  cancellation: {
+    by: "customer" | "admin" | "system";
+    actorId: string | null;
+    reason: CancellationReason;
+    note: string | null;
+    at: Timestamp;
+  } | null;
   expiresAt: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 };
 
-/** serviceRequests/{requestId}/private/location — precise address, customer + assigned technician only. */
-export type ServiceRequestPrivateDoc = { address: AddressSnapshot };
+export type RequestAttachment = {
+  storagePath: string; // serviceRequests/{requestId}/media/{file}
+  contentType: string; // from the stored object's metadata, not the client
+  sizeBytes: number;
+  kind: AttachmentKind;
+  name: string;
+};
+
+/** serviceRequests/{requestId}/private/details — customer, assigned technician and admins only. */
+export type ServiceRequestPrivateDoc = {
+  address: AddressSnapshot;
+  accessInstructions: string | null;
+};
+
+/** serviceRequests/{requestId}/history/{eventId} — append-only audit log. */
+export type ServiceRequestEventDoc = {
+  from: ServiceRequestStatus | null; // null for creation
+  to: ServiceRequestStatus;
+  actorId: string | null; // null for system events
+  actorRole: UserRole | "system";
+  note: string | null;
+  at: Timestamp;
+};
 
 /** serviceRequests/{requestId}/offers/{technicianId} — urgent acceptances & inspection-fee offers. */
 export type OfferDoc = {

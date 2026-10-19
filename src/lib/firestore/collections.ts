@@ -21,13 +21,20 @@ export const collections = {
   notifications: "notifications",
 } as const;
 
+/** Fixed document ids inside subcollections. */
+export const docIds = {
+  requestPrivateDetails: "details",
+} as const;
+
 export const subcollections = {
   /** customers/{uid}/addresses/{addressId} */
   addresses: "addresses",
   /** serviceRequests/{requestId}/offers/{technicianId} */
   offers: "offers",
-  /** serviceRequests/{requestId}/private/location */
+  /** serviceRequests/{requestId}/private/details */
   requestPrivate: "private",
+  /** serviceRequests/{requestId}/history/{eventId} */
+  requestHistory: "history",
   /** bookings/{bookingId}/statusHistory/{eventId} */
   statusHistory: "statusHistory",
   /** conversations/{conversationId}/messages/{messageId} */
@@ -40,6 +47,10 @@ export const subcollections = {
 export const storagePaths = {
   avatarPrefix: (uid: string) => `avatars/${uid}/`,
   technicianDocumentPrefix: (uid: string) => `technicianDocuments/${uid}/`,
+  /** Customer-owned uploads for a request that hasn't been submitted yet. */
+  requestDraftPrefix: (uid: string, submissionKey: string) => `requestMedia/${uid}/${submissionKey}/`,
+  /** Server-owned copies attached to a submitted request. */
+  requestMediaPrefix: (requestId: string) => `serviceRequests/${requestId}/media/`,
 } as const;
 
 import type { UserRole } from "@/features/auth/roles";

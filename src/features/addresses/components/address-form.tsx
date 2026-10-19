@@ -28,9 +28,14 @@ import { sriLankaDistricts } from "@/features/bookings/schemas";
 import { addressInputSchema, type AddressFormValues, type AddressInput } from "../schemas";
 import { createAddressAction, updateAddressAction } from "../server/actions";
 
-type Props =
+type Props = (
   | { mode: "create"; defaultValues: AddressFormValues; isDefault?: never; addressId?: never }
-  | { mode: "edit"; addressId: string; defaultValues: AddressFormValues; isDefault: boolean };
+  | { mode: "edit"; addressId: string; defaultValues: AddressFormValues; isDefault: boolean }
+) & {
+  /** Embedded use (e.g. inside the request form): called instead of navigating away. */
+  onSaved?: (addressId: string) => void;
+  onCancel?: () => void;
+};
 
 const optional = <span className="font-normal text-muted-foreground">(optional)</span>;
 
@@ -58,6 +63,10 @@ export function AddressForm(props: Props) {
       for (const [name, message] of Object.entries(result.fieldErrors ?? {})) {
         form.setError(name as keyof AddressFormValues, { message });
       }
+      return;
+    }
+    if (props.onSaved) {
+      props.onSaved(props.mode === "create" ? (result.data as { id: string }).id : props.addressId);
       return;
     }
     router.replace(`/customer/addresses?status=${props.mode === "create" ? "created" : "updated"}`);
@@ -216,7 +225,7 @@ export function AddressForm(props: Props) {
 
       {formError ? <FormAlert tone="error">{formError}</FormAlert> : null}
       <div className="flex flex-col-reverse gap-2 border-t pt-6 sm:flex-row sm:justify-end">
-        <Button type="button" variant="ghost" size="xl" onClick={() => router.push("/customer/addresses")}>
+        <Button type="button" variant="ghost" size="xl" onClick={() => (props.onCancel ? props.onCancel() : router.push("/customer/addresses"))}>
           Cancel
         </Button>
         <SubmitButton pending={form.formState.isSubmitting} pendingLabel="Saving…">

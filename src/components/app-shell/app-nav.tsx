@@ -2,6 +2,7 @@
 
 import {
   ClipboardCheck,
+  ClipboardList,
   Hammer,
   LayoutDashboard,
   MapPin,
@@ -18,6 +19,7 @@ import type { NavIcon, NavItem } from "./nav-config";
 const icons: Record<NavIcon, (props: { className?: string }) => React.ReactElement> = {
   dashboard: (p) => <LayoutDashboard {...p} aria-hidden="true" />,
   services: (p) => <Wrench {...p} aria-hidden="true" />,
+  requests: (p) => <ClipboardList {...p} aria-hidden="true" />,
   addresses: (p) => <MapPin {...p} aria-hidden="true" />,
   profile: (p) => <UserRound {...p} aria-hidden="true" />,
   applications: (p) => <ClipboardCheck {...p} aria-hidden="true" />,

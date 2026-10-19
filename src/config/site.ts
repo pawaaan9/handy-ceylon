@@ -13,6 +13,9 @@ export const routes = {
   services: "/services",
   getHelpNow: "/get-help-now",
   getAQuote: "/get-a-quote",
+  customerRequests: "/customer/requests",
+  /** Customer request form; accepts ?mode=urgent|quote_visit|quote_online&category=&service= */
+  newRequest: "/customer/requests/new",
   login: "/login",
   signUp: "/signup",
   becomeATechnician: "/technician/register",

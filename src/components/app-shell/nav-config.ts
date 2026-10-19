@@ -1,11 +1,12 @@
 import type { UserRole } from "@/features/auth/roles";
 
-export type NavIcon = "dashboard" | "services" | "addresses" | "profile" | "applications" | "jobs";
+export type NavIcon = "dashboard" | "services" | "requests" | "addresses" | "profile" | "applications" | "jobs";
 export type NavItem = { href: string; label: string; icon: NavIcon };
 
 export const navByRole: Record<UserRole, NavItem[]> = {
   customer: [
     { href: "/customer/dashboard", label: "Dashboard", icon: "dashboard" },
+    { href: "/customer/requests", label: "Requests", icon: "requests" },
     { href: "/services", label: "Services", icon: "services" },
     { href: "/customer/addresses", label: "Addresses", icon: "addresses" },
     { href: "/customer/profile", label: "Profile", icon: "profile" },

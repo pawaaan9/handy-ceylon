@@ -106,12 +106,23 @@ async function CategoryContent({ params }: PageProps<"/services/[slug]">) {
                   <ul className="mt-3 divide-y overflow-hidden rounded-2xl border bg-card">
                     {group.services.map((s) => (
                       <li key={s.id} className="px-5 py-4">
-                        <h3 className="font-medium text-foreground">
-                          {s.name}
-                        </h3>
-                        <p className="mt-0.5 text-sm text-muted-foreground">
-                          {s.description}
-                        </p>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <h3 className="font-medium text-foreground">
+                              {s.name}
+                            </h3>
+                            <p className="mt-0.5 text-sm text-muted-foreground">
+                              {s.description}
+                            </p>
+                          </div>
+                          <Link
+                            href={`${routes.newRequest}?service=${s.id}`}
+                            className="shrink-0 text-sm font-medium text-primary hover:underline"
+                            aria-label={`Request ${s.name}`}
+                          >
+                            Request
+                          </Link>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -130,13 +141,13 @@ async function CategoryContent({ params }: PageProps<"/services/[slug]">) {
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <Button asChild variant="urgent" size="xl">
-                <Link href={`${routes.getHelpNow}?category=${category.id}`}>
+                <Link href={`${routes.newRequest}?mode=urgent&category=${category.id}`}>
                   <Zap data-icon="inline-start" aria-hidden="true" />
                   Get Help Now
                 </Link>
               </Button>
               <Button asChild size="xl">
-                <Link href={`${routes.getAQuote}?category=${category.id}`}>
+                <Link href={`${routes.newRequest}?category=${category.id}`}>
                   <FileText data-icon="inline-start" aria-hidden="true" />
                   Get a Quote
                 </Link>

@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { bookingModeSchema } from "./types";
-
 /** Sri Lanka's 25 administrative districts. */
 export const sriLankaDistricts = [
   "Ampara", "Anuradhapura", "Badulla", "Batticaloa", "Colombo", "Galle",
@@ -14,45 +12,6 @@ export const districtSchema = z.enum(sriLankaDistricts, { error: "Select a distr
 
 /** LKR stored as integer cents. Upper bound guards against typos. */
 export const lkrCentsSchema = z.number().int().nonnegative().max(100_000_000_00);
-
-export const addressSchema = z.object({
-  line1: z.string().trim().min(3).max(120),
-  line2: z.string().trim().max(120).optional(),
-  city: z.string().trim().min(2).max(60),
-  district: districtSchema,
-  /** Pin location; collected with a map picker in the booking phase. */
-  location: z
-    .object({
-      lat: z.number().min(5.8).max(10),
-      lng: z.number().min(79.5).max(82),
-    })
-    .optional(),
-});
-
-const mediaRefSchema = z.object({
-  storagePath: z.string().min(1).max(500),
-  contentType: z.string().regex(/^(image|video)\//),
-});
-
-/** Payload a customer submits for any booking mode; validated on the server. */
-export const createServiceRequestSchema = z
-  .object({
-    mode: bookingModeSchema,
-    categoryId: z.string().min(1).max(60),
-    title: z.string().trim().min(5).max(100),
-    description: z.string().trim().min(10).max(2000),
-    address: addressSchema,
-    preferredWindow: z
-      .object({ start: z.iso.datetime({ offset: true }), end: z.iso.datetime({ offset: true }) })
-      .optional(),
-    media: z.array(mediaRefSchema).max(10).default([]),
-    measurements: z.string().trim().max(1000).optional(),
-  })
-  .refine((v) => v.mode !== "quote_online" || v.media.length > 0, {
-    message: "Online quotes need at least one photo or video.",
-    path: ["media"],
-  });
-export type CreateServiceRequestInput = z.infer<typeof createServiceRequestSchema>;
 
 export const quotationLineItemSchema = z.object({
   description: z.string().trim().min(2).max(200),
