@@ -6,19 +6,22 @@ type TechnicianFacts = Pick<
   TechnicianDoc,
   "accountStatus" | "verificationStatus" | "availability" | "categoryIds" | "serviceDistricts"
 >;
-type RequestFacts = Pick<ServiceRequestDoc, "customerId" | "categoryId" | "district">;
+type RequestFacts = Pick<ServiceRequestDoc, "customerId" | "categoryId" | "district"> &
+  Partial<Pick<ServiceRequestDoc, "mode">>;
 
 /**
- * Whether this technician may take this urgent request, from stored facts only:
- * an approved, active account that is marked online and covers the request's
- * service category and district. Availability is never assumed.
+ * Whether this technician may take or quote for this request, from stored
+ * facts only: an approved, active account covering the request's service
+ * category and district. Get Help Now also needs the technician marked
+ * online — availability is never assumed. Quotes don't, because the
+ * technician proposes their own visit times or timeline.
  */
 export function technicianEligibility(
   technicianUid: string,
   tech: TechnicianFacts,
   request: RequestFacts,
 ): EligibilityResult {
-  const ready = technicianReadiness(tech);
+  const ready = (request.mode ?? "urgent") === "urgent" ? technicianReadiness(tech) : accountReadiness(tech);
   if (!ready.eligible) return ready;
   if (request.customerId === technicianUid) {
     return { eligible: false, reason: "You can't accept your own request." };
@@ -32,13 +35,20 @@ export function technicianEligibility(
   return { eligible: true };
 }
 
-/** Whether the account can take any job right now: approved, active and marked online. */
-export function technicianReadiness(
-  tech: Pick<TechnicianFacts, "accountStatus" | "verificationStatus" | "availability">,
-): EligibilityResult {
+/** An approved, active technician account (the minimum for quoting). */
+export function accountReadiness(tech: Pick<TechnicianFacts, "accountStatus" | "verificationStatus">): EligibilityResult {
   if (tech.accountStatus !== "active" || tech.verificationStatus !== "approved") {
     return { eligible: false, reason: "Your technician account isn't active, so you can't take jobs right now." };
   }
+  return { eligible: true };
+}
+
+/** Whether the account can take an urgent job right now: approved, active and marked online. */
+export function technicianReadiness(
+  tech: Pick<TechnicianFacts, "accountStatus" | "verificationStatus" | "availability">,
+): EligibilityResult {
+  const account = accountReadiness(tech);
+  if (!account.eligible) return account;
   if (tech.availability !== "online") {
     return { eligible: false, reason: "Go online to accept urgent requests." };
   }

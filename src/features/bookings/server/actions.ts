@@ -9,22 +9,34 @@ import {
   acceptUrgentRequestSchema,
   bookingStepSchema,
   cancelBookingSchema,
-  declineUrgentRequestSchema,
   decideQuotationSchema,
+  quotationIdOnlySchema,
+  requestIdOnlySchema,
+  selectVisitOfferSchema,
   setAvailabilitySchema,
   submitQuotationSchema,
+  submitRemoteQuotationSchema,
+  submitVisitOfferSchema,
 } from "../schemas";
 import type { CancellationOutcome } from "../state-machine";
 import {
   acceptUrgentRequest,
   cancelBooking,
-  declineUrgentRequest,
+  declineRequest,
   decideQuotation,
   runBookingStep,
   setAvailability,
   submitQuotation,
   type Actor,
 } from "./repository";
+import {
+  selectRemoteQuotation,
+  selectVisitOffer,
+  submitRemoteQuotation,
+  submitVisitOffer,
+  withdrawRemoteQuotation,
+  withdrawVisitOffer,
+} from "./quotes";
 
 /*
  * The acting user and their role always come from the session. Inputs are
@@ -51,10 +63,10 @@ export async function acceptUrgentRequestAction(values: unknown): Promise<Action
   });
 }
 
-export async function declineUrgentRequestAction(values: unknown): Promise<ActionResult> {
+export async function declineRequestAction(values: unknown): Promise<ActionResult> {
   return runAction(async () => {
     const user = await requireActionUser(["technician"]);
-    await declineUrgentRequest(user.uid, declineUrgentRequestSchema.parse(values).requestId);
+    await declineRequest(user.uid, requestIdOnlySchema.parse(values).requestId);
     refresh();
     return undefined;
   });
@@ -103,5 +115,61 @@ export async function cancelBookingAction(values: unknown): Promise<ActionResult
     const outcome = await cancelBooking(actor, cancelBookingSchema.parse(values));
     refresh();
     return outcome;
+  });
+}
+
+// ── Get a Quote ─────────────────────────────────────────────────────────────
+
+export async function submitVisitOfferAction(values: unknown): Promise<ActionResult> {
+  return runAction(async () => {
+    const user = await requireActionUser(["technician"]);
+    await submitVisitOffer(user.uid, submitVisitOfferSchema.parse(values));
+    refresh();
+    return undefined;
+  });
+}
+
+export async function withdrawVisitOfferAction(values: unknown): Promise<ActionResult> {
+  return runAction(async () => {
+    const user = await requireActionUser(["technician"]);
+    await withdrawVisitOffer(user.uid, requestIdOnlySchema.parse(values).requestId);
+    refresh();
+    return undefined;
+  });
+}
+
+export async function selectVisitOfferAction(values: unknown): Promise<ActionResult<{ bookingId: string }>> {
+  return runAction(async () => {
+    const user = await requireActionUser(["customer"]);
+    const { bookingId } = await selectVisitOffer(user.uid, selectVisitOfferSchema.parse(values));
+    refresh();
+    return { bookingId };
+  });
+}
+
+export async function submitRemoteQuotationAction(values: unknown): Promise<ActionResult<{ id: string }>> {
+  return runAction(async () => {
+    const user = await requireActionUser(["technician"]);
+    const { id } = await submitRemoteQuotation(user.uid, submitRemoteQuotationSchema.parse(values));
+    refresh();
+    return { id };
+  });
+}
+
+export async function withdrawRemoteQuotationAction(values: unknown): Promise<ActionResult> {
+  return runAction(async () => {
+    const user = await requireActionUser(["technician"]);
+    await withdrawRemoteQuotation(user.uid, quotationIdOnlySchema.parse(values).quotationId);
+    refresh();
+    return undefined;
+  });
+}
+
+export async function selectRemoteQuotationAction(values: unknown): Promise<ActionResult<{ bookingId: string }>> {
+  return runAction(async () => {
+    const user = await requireActionUser(["customer"]);
+    const { bookingId } = await selectRemoteQuotation(user.uid, quotationIdOnlySchema.parse(values).quotationId);
+    refresh();
+    return { bookingId };
   });
 }

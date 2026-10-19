@@ -55,7 +55,7 @@ async function TechnicianDashboardPageContent() {
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatTile label="Urgent requests for you" value={available ? available.requests.length : "—"} tone="urgent" />
+        <StatTile label="Open requests for you" value={available ? available.requests.length : "—"} tone="urgent" />
         <StatTile label="Completed jobs" value={profile?.completedJobs ?? 0} tone="primary" />
         <StatTile
           label="Rating"
@@ -72,7 +72,7 @@ async function TechnicianDashboardPageContent() {
                 href="/technician/requests"
                 className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
               >
-                Urgent requests
+                Job requests
                 <ArrowRight className="size-4" aria-hidden="true" />
               </Link>
             }

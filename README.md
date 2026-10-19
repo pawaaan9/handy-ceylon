@@ -9,10 +9,10 @@ Tailwind CSS 4 · shadcn/ui (Radix) · Lucide · Zod · React Hook Form · Fireb
 Firestore, Storage · Firebase Admin SDK.
 
 **Status:** foundation, landing page, authentication & user management, service catalogue, saved
-addresses, customer service requests (Phase 4) and the **Get Help Now** workflow (Phase 5) are
-complete. The two Get a Quote workflows (technician offers, remote quotations) come next: those
-requests are saved and stay `open` until then. Payments are settled directly between customer and
-technician for now.
+addresses, customer service requests (Phase 4), **Get Help Now** (Phase 5) and **Get a Quote** —
+Technician Visit and Quote Online (Phase 6) — are complete. No payment gateway yet: every booking
+keeps a `payments` record of what's owed, settled directly between customer and technician until
+Phase 9.
 
 ## Features
 
@@ -28,6 +28,14 @@ technician for now.
   or decline; the first acceptance wins. The customer sees the verified technician, inspection fee and
   ETA, confirms the visit, follows the job, and approves or rejects an itemized quotation (with
   revisions). Work can only start after approval. Technicians toggle their availability.
+- **Get a Quote › Technician Visit**: eligible technicians offer a visit fee and up to three visit times;
+  the customer compares offers (profile, verification, rating, fee, times), books one, and then
+  approves, asks to revise, or rejects the itemized quotation made after the inspection.
+- **Get a Quote › Quote Online**: eligible technicians send sealed itemized quotations (labour,
+  materials, extras, timeline, exclusions, assumptions, validity) from the description, measurements,
+  site details and media. Selecting one creates a confirmed booking. Price changes on site need a
+  reasoned revision with itemized differences and the customer's approval.
+- **Messages** between the customer and each responding technician, about scope and timing.
 - **Service requests**: a multi-step form (service → address → details → photos/videos → review) for
   **Get Help Now**, **Get a Quote › Technician Visit** and **Get a Quote › Quote Online**, with draft
   saving, upload progress, duplicate-safe submission, a request list, a detail page and cancellation.
@@ -98,9 +106,9 @@ Never prefix Admin credentials with `NEXT_PUBLIC_` or commit `.env.local` / serv
    ```
 7. Seed the catalogue: `npm run seed:catalogue`.
 8. Create the first administrator — see below.
-9. Deploying `firestore.indexes.json` creates the indexes the technician request list
-   (`serviceRequests`: status, mode, district, createdAt) and the availability count
-   (`technicians`: availability, verificationStatus, categoryIds) need. Wait until they finish building.
+9. Deploying `firestore.indexes.json` creates the composite indexes the technician request list,
+   technician counts and quotation comparisons need (`serviceRequests`, `technicians`, `quotations`).
+   Wait until they finish building in **Firestore → Indexes** before testing in production.
 10. *Recommended:* in **Google Cloud Console → Cloud Storage → your bucket → Lifecycle**, add a rule
    to delete objects with the prefix `requestMedia/` older than 7 days. This removes uploads from
    request drafts that were never submitted.
@@ -135,7 +143,9 @@ sign-in shows the emulator's test account picker.
 | `phoneIndex/{E.164}` | One account per mobile number |
 | `serviceRequests/{id}` (+ `/private/details`, `/history/{id}`, `/offers/{technicianId}`) | Customer service requests — see below |
 | `bookings/{id}` (+ `/statusHistory/{id}`) | One technician's job for one request — see Get Help Now |
-| `quotations/{id}` | Itemized quotations (versioned) |
+| `quotations/{id}` | Itemized quotations: on-site, online and revisions (versioned, never edited once decided) |
+| `payments/{bookingId}` | What's owed per job — visit fee, repair charges, total, status; collection comes in Phase 9 |
+| `conversations/{requestId}_{technicianId}` (+ `/messages/{id}`) | Customer ↔ technician threads |
 | `notifications/{uid}/items/{id}` | Notifications for any role |
 
 Security Rules: `firestore.rules` and `storage.rules`. Full field-level types: `src/lib/firestore/models.ts`.
@@ -172,8 +182,8 @@ Security Rules: `firestore.rules` and `storage.rules`. Full field-level types: `
 | Technician assigned | booking | `technician_assigned` | customer confirms the visit after seeing the inspection fee + ETA |
 | Visit scheduled | booking | `visit_scheduled` | technician: "I'm on my way" → `en_route` |
 | Inspecting | booking | `en_route` → `inspecting` | technician arrives, then sends findings + itemized quotation |
-| Awaiting customer approval | booking | `awaiting_customer_approval` | customer approves → `confirmed`, or rejects → `quote_rejected` |
-| Quote rejected | booking | `quote_rejected` | technician sends a revision (max 3 versions) · either side cancels |
+| Awaiting customer approval | booking | `awaiting_customer_approval` | customer approves → `confirmed` · asks for a revision → `quote_rejected` · rejects → `cancelled` |
+| Revision requested | booking | `quote_rejected` | technician sends a revision (max 3 versions) · either side cancels |
 | Confirmed job | booking | `confirmed` | technician starts work → `work_in_progress` |
 | Completed | booking | `work_in_progress` → `completed` | technician |
 | Cancelled | booking (+ request) | `cancelled` | see below |
@@ -214,6 +224,60 @@ The request mirrors the booking's status in `bookingStatus` for lists. Transitio
   `history` / `statusHistory` with a server timestamp.
 - **Privacy:** technicians see only the area and description before accepting. The address snapshot,
   access instructions, contact number and media are readable only by the assigned technician.
+
+### Get a Quote
+
+Both options reuse the request form (with optional **site details** that quoting technicians can see)
+and the booking lifecycle above. Only approved, active technicians covering the request's category
+and district can respond; unlike Get Help Now, they don't need to be online.
+
+**Technician Visit (`quote_visit`)**
+
+1. Technicians send an offer: a **visit fee** (visit and inspection only, whole LKR, 0 = free) and up
+   to 3 visit times within 30 days. They can update it while pending, or withdraw it.
+2. The customer compares offers (cheapest first) with each technician's profile, verification, rating,
+   fee and times, messages them if needed, picks a time and confirms.
+3. Selection runs in one transaction: the request must still be open, the offer still pending and the
+   technician still eligible. It creates the booking at `visit_scheduled` (the visit and fee are
+   confirmed), marks every other offer `not_selected`, and creates the payment record.
+4. Then as Get Help Now: travel → inspect → itemized final quotation → approve / request revision /
+   reject → `confirmed` → work. Paid work can't start before approval.
+
+**Quote Online (`quote_online`)**
+
+1. Technicians send sealed quotations — other technicians can never read them (Security Rules and
+   server) — with labour, materials and additional lines, estimated hours, exclusions, assumptions and
+   a validity period (1–30 days). A new version supersedes their pending one (max 3).
+2. The customer compares quotations (cheapest first) with profiles, ratings, timelines and scope, and
+   can message each technician.
+3. Selecting one runs in one transaction: request open, quotation pending and unexpired, technician
+   still eligible. The quotation becomes `accepted`, the others `not_selected`, and a booking is
+   created already `confirmed` at that price, with its payment record.
+4. The technician travels (`confirmed` → `en_route` → on site). If the site matches, they start work.
+
+**Price change policy (all options)**
+
+- Once a quotation is accepted, any change is a **new revised quotation** linked to it
+  (`revisionOfQuotationId`) with a required **reason** and stored **itemized differences**
+  (added / removed / changed lines and the total change).
+- Submitting it pauses the job at `awaiting_customer_approval` — even mid-work — so no extra paid work
+  can happen until the customer approves. They can also ask for another revision or reject (cancel).
+- On approval the previous accepted quotation becomes `superseded` but keeps its `acceptedAt`, prices
+  and lines; nothing is overwritten. Every version, reason and decision stays in `quotations` and the
+  booking's `statusHistory`.
+
+**Quotation statuses:** `submitted` → `accepted` · `revision_requested` · `rejected` · `not_selected` ·
+`withdrawn` · `superseded` · `expired` (past `validUntil`; on-site quotations are valid for 7 days).
+An expired quotation can't be selected or approved; an expired on-site quotation sends the job back
+to `quote_rejected` for a revision.
+
+**Fees and payments.** Visit/inspection fees are always stored and shown apart from repair charges
+(labour + materials + additional). `payments/{bookingId}` holds `visitFeeLkr`, `repairChargesLkr`,
+`totalDueLkr` and `status` (`awaiting_completion` → `due` on completion, or `due`/`void` on
+cancellation depending on whether a visit fee is owed), updated in the same transaction as the booking.
+
+**Withdrawal before arrival.** If the chosen technician withdraws before arriving, the request reopens
+and the other technicians' `not_selected` offers or unexpired quotations become selectable again.
 
 ## Security model
 

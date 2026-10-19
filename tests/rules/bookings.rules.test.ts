@@ -132,3 +132,43 @@ describe("request media", () => {
     await assertFails(getBytes(ref(as("tina", "technician").storage(), "serviceRequests/r1/media/leak.jpg")));
   });
 });
+
+describe("payments and conversations", () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, "payments/b1"), {
+        bookingId: "b1",
+        customerId: "alice",
+        technicianId: "tom",
+        participantIds: ["alice", "tom"],
+        status: "awaiting_completion",
+        totalDueLkr: 5000,
+      });
+      await setDoc(doc(db, "conversations/r1_tom"), { participantIds: ["alice", "tom"], customerId: "alice", technicianId: "tom" });
+      await setDoc(doc(db, "conversations/r1_tom/messages/m1"), { senderId: "alice", body: "Hi", attachmentPath: null });
+      await setDoc(doc(db, "quotations/q2"), { customerId: "alice", technicianId: "tina", status: "submitted", totalLkr: 4000 });
+    });
+  });
+
+  it("lets only the job's parties read the payment record, and nobody write it", async () => {
+    await assertSucceeds(getDoc(doc(as("alice").firestore(), "payments/b1")));
+    await assertSucceeds(getDoc(doc(as("tom", "technician").firestore(), "payments/b1")));
+    await assertFails(getDoc(doc(as("bob").firestore(), "payments/b1")));
+    await assertFails(updateDoc(doc(as("alice").firestore(), "payments/b1"), { status: "void", totalDueLkr: 0 }));
+    await assertFails(updateDoc(doc(as("tom", "technician").firestore(), "payments/b1"), { totalDueLkr: 9000 }));
+  });
+
+  it("keeps threads between their two participants", async () => {
+    await assertSucceeds(getDoc(doc(as("alice").firestore(), "conversations/r1_tom/messages/m1")));
+    await assertSucceeds(getDoc(doc(as("tom", "technician").firestore(), "conversations/r1_tom")));
+    await assertFails(getDoc(doc(as("tina", "technician").firestore(), "conversations/r1_tom/messages/m1")));
+    await assertFails(getDoc(doc(as("bob").firestore(), "conversations/r1_tom")));
+  });
+
+  it("keeps each technician's quotation sealed from other technicians", async () => {
+    await assertFails(getDoc(doc(as("tom", "technician").firestore(), "quotations/q2")));
+    await assertSucceeds(getDoc(doc(as("tina", "technician").firestore(), "quotations/q2")));
+    await assertSucceeds(getDoc(doc(as("alice").firestore(), "quotations/q2")));
+  });
+});

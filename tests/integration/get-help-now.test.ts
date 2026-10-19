@@ -6,7 +6,7 @@ import {
   acceptUrgentRequest,
   cancelBooking,
   countAvailableTechnicians,
-  declineUrgentRequest,
+  declineRequest,
   decideQuotation,
   getBookingView,
   listAvailableRequests,
@@ -120,7 +120,7 @@ describe("Get Help Now workflow", () => {
 
     const first = await submitQuotation("tom", quote(bookingId, 4000));
     expect((await getBookingView(customer, bookingId))!.allowed.decideQuotationId).toBe(first.id);
-    await decideQuotation(customer.uid, { quotationId: first.id, decision: "reject", reason: "Labour seems high" });
+    await decideQuotation(customer.uid, { quotationId: first.id, decision: "request_revision", reason: "Labour seems high" });
     expect((await bookingDoc(bookingId)).status).toBe("quote_rejected");
 
     const second = await submitQuotation("tom", quote(bookingId, 2500));
@@ -132,9 +132,9 @@ describe("Get Help Now workflow", () => {
     expect(confirmed.agreedTotalLkr).toBe(5500);
     expect(confirmed.quotations.map((q) => [q.version, q.status, q.totalLkr])).toEqual([
       [2, "accepted", 5500],
-      [1, "rejected", 7000],
+      [1, "revision_requested", 7000],
     ]);
-    expect(confirmed.quotations[1].rejectionReason).toBe("Labour seems high");
+    expect(confirmed.quotations[1].decisionReason).toBe("Labour seems high");
 
     await runBookingStep(tech, bookingId, "start_work");
     await runBookingStep(tech, bookingId, "complete_work");
@@ -169,7 +169,7 @@ describe("Get Help Now workflow", () => {
     const { id } = await submitQuotation("tom", quote(bookingId));
     await expect(runBookingStep(tech, bookingId, "start_work")).rejects.toThrow(/isn't available/);
 
-    await decideQuotation(customer.uid, { quotationId: id, decision: "reject", reason: "Too expensive" });
+    await decideQuotation(customer.uid, { quotationId: id, decision: "request_revision", reason: "Too expensive" });
     await expect(runBookingStep(tech, bookingId, "start_work")).rejects.toThrow(/isn't available/);
     expect((await bookingDoc(bookingId)).status).toBe("quote_rejected");
   });
@@ -178,7 +178,7 @@ describe("Get Help Now workflow", () => {
     const { customer, bookingId } = await toInspecting();
     for (let i = 0; i < 3; i++) {
       const { id } = await submitQuotation("tom", quote(bookingId, 3000 - i * 100));
-      await decideQuotation(customer.uid, { quotationId: id, decision: "reject", reason: "Still too much" });
+      await decideQuotation(customer.uid, { quotationId: id, decision: "request_revision", reason: "Still too much" });
     }
     await expect(submitQuotation("tom", quote(bookingId, 1000))).rejects.toThrow(/3 quotations/);
   });
@@ -299,13 +299,13 @@ describe("eligibility and availability", () => {
   it("lists eligible requests and hides declined ones", async () => {
     const { requestId } = await setup();
     const listed = await listAvailableRequests("tom");
-    expect(listed.technician).toMatchObject({ availability: "online", canAccept: true });
+    expect(listed.technician).toMatchObject({ availability: "online", canAcceptUrgent: true, canQuote: true });
     expect(listed.requests.map((r) => r.id)).toEqual([requestId]);
     // Summaries never carry the private address.
     expect(listed.requests[0]).not.toHaveProperty("address");
 
-    await declineUrgentRequest("tom", requestId);
-    await declineUrgentRequest("tom", requestId);
+    await declineRequest("tom", requestId);
+    await declineRequest("tom", requestId);
     expect((await listAvailableRequests("tom")).requests).toEqual([]);
     await expect(accept("tom", requestId)).rejects.toThrow(/already passed/);
 

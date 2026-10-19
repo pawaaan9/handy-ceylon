@@ -9,7 +9,10 @@ import { FormAlert } from "@/components/forms/form-alert";
 import { addressLines, formatPhone } from "@/features/addresses/format";
 import { requireRole } from "@/features/auth/server/dal";
 import { BookingPanel } from "@/features/bookings/components/booking-panel";
+import { RemoteQuotationsComparison, VisitOffersComparison } from "@/features/bookings/components/quote-comparison";
 import { countAvailableTechnicians, getBookingView } from "@/features/bookings/server/repository";
+import { listRemoteQuotations, listVisitOffers } from "@/features/bookings/server/quotes";
+import { listMessages } from "@/features/messages/server/repository";
 import { CancelRequestButton } from "@/features/requests/components/cancel-request-button";
 import { RequestStatusBadge } from "@/features/requests/components/request-status-badge";
 import { formatBytes, formatSchedule } from "@/features/requests/format";
@@ -50,16 +53,38 @@ async function RequestPageContent({ params, searchParams }: PageProps<"/customer
   const [request, { status }] = await Promise.all([getCustomerRequest(user.uid, id.data), searchParams]);
   if (!request) notFound();
   const message = typeof status === "string" ? messages[status] : undefined;
-  const waiting = request.status === "open" && request.mode === "urgent";
-  const [booking, availableNow] = await Promise.all([
+  const waiting = request.status === "open";
+  const [booking, availableNow, offers, quotations] = await Promise.all([
     request.bookingId ? getBookingView({ uid: user.uid, role: "customer" }, request.bookingId) : null,
     waiting
-      ? countAvailableTechnicians(request.categoryId, request.district).catch((error) => {
+      ? countAvailableTechnicians(request.categoryId, request.district, {
+          requireOnline: request.mode === "urgent",
+        }).catch((error) => {
           console.error("[requests] availability count failed", error);
           return null;
         })
       : null,
+    waiting && request.mode === "quote_visit" ? listVisitOffers(user.uid, request.id) : null,
+    waiting && request.mode === "quote_online" ? listRemoteQuotations(user.uid, request.id) : null,
   ]);
+  // Threads with each responding technician, for the comparison screens.
+  const conversationIds = [...(offers ?? []), ...(quotations ?? [])]
+    .map((r) => r.conversationId)
+    .filter((c): c is string => Boolean(c));
+  const threads = Object.fromEntries(
+    await Promise.all(conversationIds.map(async (c) => [c, await listMessages(user.uid, c)] as const)),
+  );
+  const tradeName = request.categoryName.toLowerCase();
+  const coverage =
+    availableNow === null
+      ? "Verified technicians who cover your area can see your request."
+      : request.mode === "urgent"
+        ? availableNow === 0
+          ? `No verified ${tradeName} technicians covering ${request.district} are online right now. Your request stays open, and technicians will see it when they come online.`
+          : `${availableNow} verified ${tradeName} technician${availableNow === 1 ? " is" : "s are"} online in ${request.district} now and can see your request.`
+        : availableNow === 0
+          ? `No verified ${tradeName} technicians cover ${request.district} yet. Your request stays open in case one joins.`
+          : `${availableNow} verified ${tradeName} technician${availableNow === 1 ? " covers" : "s cover"} ${request.district} and can respond.`;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -95,14 +120,14 @@ async function RequestPageContent({ params, searchParams }: PageProps<"/customer
               <Radio className="size-5" aria-hidden="true" />
             </span>
             <div className="space-y-1 text-sm">
-              <p className="text-base font-semibold text-foreground">Waiting for a technician to accept</p>
-              <p className="text-muted-foreground">
-                {availableNow === null
-                  ? "Verified technicians who cover your area can see your request."
-                  : availableNow === 0
-                    ? `No verified ${request.categoryName.toLowerCase()} technicians covering ${request.district} are online right now. Your request stays open, and technicians will see it when they come online.`
-                    : `${availableNow} verified ${request.categoryName.toLowerCase()} technician${availableNow === 1 ? " is" : "s are"} online in ${request.district} now and can see your request.`}
+              <p className="text-base font-semibold text-foreground">
+                {request.mode === "urgent"
+                  ? "Waiting for a technician to accept"
+                  : request.mode === "quote_visit"
+                    ? "Collecting visit offers"
+                    : "Collecting quotations"}
               </p>
+              <p className="text-muted-foreground">{coverage}</p>
               <p className="text-muted-foreground">
                 Open until {formatDateTime(new Date(request.expiresAt))}. This page updates when you refresh it.
               </p>
@@ -111,7 +136,33 @@ async function RequestPageContent({ params, searchParams }: PageProps<"/customer
         </Panel>
       ) : null}
 
-      {booking ? <BookingPanel booking={booking} audience="customer" /> : null}
+      {offers ? (
+        <section aria-labelledby="offers-title" className="space-y-3">
+          <h2 id="offers-title" className="text-lg font-semibold text-foreground">
+            Visit offers ({offers.length})
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Compare each technician&apos;s visit fee, available times and profile. After the visit they send an
+            itemized repair quotation for you to approve.
+          </p>
+          <VisitOffersComparison requestId={request.id} offers={offers} messages={threads} canSelect={waiting} />
+        </section>
+      ) : null}
+
+      {quotations ? (
+        <section aria-labelledby="quotes-title" className="space-y-3">
+          <h2 id="quotes-title" className="text-lg font-semibold text-foreground">
+            Quotations ({quotations.filter((q) => q.status === "submitted").length})
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Each technician quoted privately from your description, photos and measurements. Selecting one confirms the
+            job at that price for the stated scope.
+          </p>
+          <RemoteQuotationsComparison quotations={quotations} messages={threads} canSelect={waiting} />
+        </section>
+      ) : null}
+
+      {booking ? <BookingPanel booking={booking} audience="customer" viewerUid={user.uid} /> : null}
 
       <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
         <div className="space-y-5">
@@ -127,6 +178,11 @@ async function RequestPageContent({ params, searchParams }: PageProps<"/customer
               {request.measurements ? (
                 <div className="sm:col-span-2">
                   <Detail label="Measurements" value={request.measurements} />
+                </div>
+              ) : null}
+              {request.siteConditions ? (
+                <div className="sm:col-span-2">
+                  <Detail label="Site details" value={request.siteConditions} />
                 </div>
               ) : null}
             </dl>

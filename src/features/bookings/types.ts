@@ -28,9 +28,9 @@ export type ServiceRequestStatus = (typeof serviceRequestStatuses)[number];
 
 /** serviceRequests/{id}/offers/{technicianId}.status — one technician's response. */
 export const offerStatuses = [
-  "pending", // quote_visit: offer waiting for the customer's choice (later phase)
-  "selected", // this technician got the job (urgent: accepted first)
-  "not_selected", // quote_visit: customer chose someone else (later phase)
+  "pending", // quote_visit: offer waiting for the customer's choice
+  "selected", // this technician got the job (urgent: accepted first; visit: chosen by the customer)
+  "not_selected", // quote_visit: customer chose someone else
   "declined", // technician passed on the request
   "withdrawn", // technician pulled out before arriving
   "expired",
@@ -44,7 +44,7 @@ export const bookingStatuses = [
   "en_route", // technician travelling
   "inspecting", // on site, inspecting
   "awaiting_customer_approval", // itemized quotation sent
-  "quote_rejected", // customer rejected it; technician may revise, either side may cancel
+  "quote_rejected", // customer asked for a revision; technician revises, or either side cancels
   "confirmed", // customer approved the quotation — the confirmed job
   "work_in_progress",
   "completed",
@@ -59,9 +59,9 @@ export const bookingStatusLabels: Record<BookingStatus, string> = {
   technician_assigned: "Technician assigned",
   visit_scheduled: "Visit confirmed",
   en_route: "Technician on the way",
-  inspecting: "Inspecting",
+  inspecting: "On site",
   awaiting_customer_approval: "Quotation awaiting approval",
-  quote_rejected: "Quotation rejected",
+  quote_rejected: "Revision requested",
   confirmed: "Job confirmed",
   work_in_progress: "Work in progress",
   completed: "Completed",
@@ -70,14 +70,34 @@ export const bookingStatusLabels: Record<BookingStatus, string> = {
 
 /** quotations/{id}.status */
 export const quotationStatuses = [
-  "submitted",
-  "accepted",
-  "rejected",
-  "withdrawn", // the job was cancelled before the customer decided
-  "superseded", // replaced by a revised version from the same technician
-  "expired",
+  "submitted", // waiting for the customer
+  "accepted", // the customer approved or selected it
+  "revision_requested", // the customer asked the technician for a revised quotation
+  "rejected", // the customer rejected it and closed the job
+  "not_selected", // Quote Online: the customer chose another technician's quotation
+  "withdrawn", // the technician withdrew it, or the job was cancelled before a decision
+  "superseded", // replaced by a newer version (an accepted one keeps its acceptedAt)
+  "expired", // validUntil passed before a decision
 ] as const;
 export type QuotationStatus = (typeof quotationStatuses)[number];
+
+export const quotationStatusLabels: Record<QuotationStatus, string> = {
+  submitted: "Awaiting decision",
+  accepted: "Accepted",
+  revision_requested: "Revision requested",
+  rejected: "Rejected",
+  not_selected: "Not selected",
+  withdrawn: "Withdrawn",
+  superseded: "Replaced by a newer version",
+  expired: "Expired",
+};
+
+/** Customer-facing names of the booking options, for headings and badges. */
+export const bookingModeLabels: Record<BookingMode, string> = {
+  urgent: "Get Help Now",
+  quote_visit: "Technician Visit",
+  quote_online: "Quote Online",
+};
 
 export const quotationLineKinds = ["labour", "materials", "additional"] as const;
 export type QuotationLineKind = (typeof quotationLineKinds)[number];

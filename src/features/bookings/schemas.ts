@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { timeSlots } from "@/features/requests/types";
+import { addDays, colomboToday, isRealDate } from "@/lib/dates";
+
 import { quotationLineKinds } from "./types";
 
 /** Sri Lanka's 25 administrative districts. */
@@ -18,8 +21,13 @@ export const MAX_INSPECTION_FEE_LKR = 25_000;
 export const MAX_LINE_UNIT_PRICE_LKR = 5_000_000;
 export const MAX_QUOTATION_TOTAL_LKR = 10_000_000;
 export const MAX_QUOTATION_LINES = 30;
-/** A rejected quotation can be revised, but not endlessly. */
+/** A quotation can be revised, but not endlessly (per technician, per job or request). */
 export const MAX_QUOTATION_VERSIONS = 3;
+export const MAX_PROPOSED_VISITS = 3;
+export const MAX_VISIT_DAYS_AHEAD = 30;
+export const MAX_QUOTE_VALID_DAYS = 30;
+/** Quotations made on site (urgent / visit) stay open this long before expiring. */
+export const ON_SITE_QUOTE_VALID_DAYS = 7;
 
 /** Accepts form strings or numbers; anything but a whole, non-negative rupee amount fails. */
 export const wholeRupees = (label: string, max: number) =>
@@ -37,6 +45,7 @@ const docId = (message: string) => z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, mes
 export const bookingIdSchema = docId("Invalid booking");
 export const quotationIdSchema = docId("Invalid quotation");
 const requestId = docId("Invalid request");
+const uid = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/, "Invalid technician");
 const submissionKey = z.string().regex(/^[A-Za-z0-9_-]{16,64}$/, "Invalid submission");
 
 const optionalText = (max: number, message: string) =>
@@ -91,6 +100,33 @@ export const quotationLineSchema = z.object({
 });
 export type QuotationLineInput = z.output<typeof quotationLineSchema>;
 
+const lineItemsSchema = z
+  .array(quotationLineSchema)
+  .min(1, "Add at least one item")
+  .max(MAX_QUOTATION_LINES, `Use ${MAX_QUOTATION_LINES} items or fewer`);
+
+const optionalHours = z
+  .union([z.literal(""), z.coerce.number<string | number>().int("Use whole hours").min(1).max(720)])
+  .transform((v) => (v === "" ? null : v));
+
+function checkTotal(v: { lineItems: QuotationLineInput[] }, ctx: z.RefinementCtx) {
+  const work = v.lineItems.reduce((sum, l) => sum + l.quantity * l.unitPriceLkr, 0);
+  if (work <= 0) {
+    ctx.addIssue({ code: "custom", path: ["lineItems"], message: "The quotation total must be more than LKR 0" });
+  } else if (work > MAX_QUOTATION_TOTAL_LKR) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["lineItems"],
+      message: `Quotations must total LKR ${MAX_QUOTATION_TOTAL_LKR.toLocaleString("en-LK")} or less`,
+    });
+  }
+}
+
+/**
+ * A quotation for a booking: the first one after an inspection, or a
+ * revision. A revision of an already-accepted quotation (a price change)
+ * must give a reason; the server enforces that because only it knows.
+ */
 export const submitQuotationSchema = z
   .object({
     bookingId: bookingIdSchema,
@@ -101,45 +137,107 @@ export const submitQuotationSchema = z
       .trim()
       .min(20, "Describe what you found in at least 20 characters")
       .max(2000, "Keep findings under 2000 characters"),
-    lineItems: z
-      .array(quotationLineSchema)
-      .min(1, "Add at least one item")
-      .max(MAX_QUOTATION_LINES, `Use ${MAX_QUOTATION_LINES} items or fewer`),
-    estimatedDurationHours: z
-      .union([z.literal(""), z.coerce.number<string | number>().int("Use whole hours").min(1).max(720)])
-      .transform((v) => (v === "" ? null : v)),
+    lineItems: lineItemsSchema,
+    estimatedDurationHours: optionalHours,
     notes: optionalText(1000, "Keep notes under 1000 characters"),
+    revisionReason: optionalText(500, "Keep the reason under 500 characters").optional().default(""),
   })
-  .superRefine((v, ctx) => {
-    const work = v.lineItems.reduce((sum, l) => sum + l.quantity * l.unitPriceLkr, 0);
-    if (work <= 0) {
-      ctx.addIssue({ code: "custom", path: ["lineItems"], message: "The quotation total must be more than LKR 0" });
-    } else if (work > MAX_QUOTATION_TOTAL_LKR) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["lineItems"],
-        message: `Quotations must total LKR ${MAX_QUOTATION_TOTAL_LKR.toLocaleString("en-LK")} or less`,
-      });
-    }
-  });
+  .superRefine(checkTotal);
 export type SubmitQuotationFormValues = z.input<typeof submitQuotationSchema>;
 export type SubmitQuotationInput = z.output<typeof submitQuotationSchema>;
 
+/** Quote Online: an itemized quotation sent remotely, from the request's description and evidence. */
+export const submitRemoteQuotationSchema = z
+  .object({
+    requestId,
+    submissionKey,
+    lineItems: lineItemsSchema,
+    estimatedDurationHours: z.coerce
+      .number<string | number>({ error: "Estimate how many hours the job takes" })
+      .int("Use whole hours")
+      .min(1, "At least 1 hour")
+      .max(720, "720 hours or fewer"),
+    exclusions: optionalText(1000, "Keep exclusions under 1000 characters"),
+    assumptions: optionalText(1000, "Keep assumptions under 1000 characters"),
+    notes: optionalText(1000, "Keep notes under 1000 characters"),
+    validForDays: z.coerce
+      .number<string | number>({ error: "Choose how long the price holds" })
+      .int()
+      .min(1, "At least 1 day")
+      .max(MAX_QUOTE_VALID_DAYS, `${MAX_QUOTE_VALID_DAYS} days or fewer`),
+  })
+  .superRefine(checkTotal);
+export type SubmitRemoteQuotationFormValues = z.input<typeof submitRemoteQuotationSchema>;
+export type SubmitRemoteQuotationInput = z.output<typeof submitRemoteQuotationSchema>;
+
+export const quotationDecisions = ["approve", "request_revision", "reject"] as const;
 export const decideQuotationSchema = z
   .object({
     quotationId: quotationIdSchema,
-    decision: z.enum(["approve", "reject"]),
+    decision: z.enum(quotationDecisions),
     reason: optionalText(500, "Keep the reason under 500 characters"),
   })
   .superRefine((v, ctx) => {
-    if (v.decision === "reject" && (!v.reason || v.reason.length < 5)) {
+    if (v.decision !== "approve" && (!v.reason || v.reason.length < 5)) {
       ctx.addIssue({
         code: "custom",
         path: ["reason"],
-        message: "Tell the technician why, so they can send a revised quotation",
+        message:
+          v.decision === "request_revision"
+            ? "Tell the technician what to change (at least 5 characters)"
+            : "Tell the technician why (at least 5 characters)",
       });
     }
   });
 export type DecideQuotationInput = z.output<typeof decideQuotationSchema>;
+
+export const quotationIdOnlySchema = z.object({ quotationId: quotationIdSchema });
+
+// ── Technician Visit offers ─────────────────────────────────────────────────
+
+export const visitSlotSchema = z.object({
+  date: z.string().refine(isRealDate, "Choose a date"),
+  timeSlot: z.enum(timeSlots, { error: "Choose a time" }),
+});
+export type VisitSlot = z.infer<typeof visitSlotSchema>;
+
+export const submitVisitOfferSchema = z
+  .object({
+    requestId,
+    /** The visit / inspection fee only — never repair charges. 0 = free visit. */
+    inspectionFeeLkr: wholeRupees("a visit fee (0 if free)", MAX_INSPECTION_FEE_LKR),
+    proposedVisits: z
+      .array(visitSlotSchema)
+      .min(1, "Offer at least one visit time")
+      .max(MAX_PROPOSED_VISITS, `Offer up to ${MAX_PROPOSED_VISITS} visit times`),
+    message: optionalText(300, "Keep the message under 300 characters"),
+  })
+  .superRefine((v, ctx) => {
+    const today = colomboToday();
+    const last = addDays(today, MAX_VISIT_DAYS_AHEAD);
+    v.proposedVisits.forEach((slot, i) => {
+      if (slot.date < today || slot.date > last) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["proposedVisits", i, "date"],
+          message: `Choose a date within the next ${MAX_VISIT_DAYS_AHEAD} days`,
+        });
+      }
+    });
+    const keys = v.proposedVisits.map((s) => `${s.date}:${s.timeSlot}`);
+    if (new Set(keys).size !== keys.length) {
+      ctx.addIssue({ code: "custom", path: ["proposedVisits"], message: "Each visit time must be different" });
+    }
+  });
+export type SubmitVisitOfferInput = z.output<typeof submitVisitOfferSchema>;
+
+export const selectVisitOfferSchema = z.object({
+  requestId,
+  technicianId: uid,
+  visitIndex: z.coerce.number<string | number>().int().min(0).max(MAX_PROPOSED_VISITS - 1),
+});
+export type SelectVisitOfferInput = z.output<typeof selectVisitOfferSchema>;
+
+export const requestIdOnlySchema = z.object({ requestId });
 
 export const setAvailabilitySchema = z.object({ availability: z.enum(["online", "offline"]) });

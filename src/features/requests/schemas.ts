@@ -3,6 +3,7 @@ import { z } from "zod";
 import { addressIdSchema } from "@/features/addresses/schemas";
 import { bookingModes, type BookingMode } from "@/features/bookings/types";
 import { catalogueSlugSchema } from "@/features/catalogue/types";
+import { addDays, colomboToday, isRealDate } from "@/lib/dates";
 
 import {
   cancellationReasons,
@@ -54,27 +55,7 @@ export type AttachmentInput = z.infer<typeof attachmentSchema>;
 
 // ── Dates (Asia/Colombo) ────────────────────────────────────────────────────
 
-const colomboDate = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Colombo",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
-/** Today's date in Sri Lanka as YYYY-MM-DD, whatever the server's time zone. */
-export function colomboToday(now = new Date()): string {
-  return colomboDate.format(now);
-}
-
-export function addDays(isoDate: string, days: number): string {
-  const [y, m, d] = isoDate.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
-}
-
-function isRealDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  return addDays(value, 0) === value; // rejects 2026-02-30 etc.
-}
+export { addDays, colomboToday } from "@/lib/dates";
 
 // ── Field schemas ───────────────────────────────────────────────────────────
 
@@ -118,6 +99,13 @@ const detailsShape = {
   preferredTimeSlot: z.union([z.literal(""), z.enum(timeSlots)]),
   accessInstructions: optionalText(500, "Keep access instructions under 500 characters"),
   measurements: optionalText(1000, "Keep measurements under 1000 characters"),
+  // Optional so drafts saved before this field existed still validate.
+  siteConditions: z
+    .string()
+    .trim()
+    .max(500, "Keep site details under 500 characters")
+    .optional()
+    .transform((v) => v || null),
 };
 
 const attachmentsShape = {
@@ -215,13 +203,15 @@ export const createServiceRequestSchema = z
     checkDetails(v, ctx);
     checkAttachments(v, ctx);
   })
-  .transform(({ timing, preferredDate, preferredTimeSlot, measurements, ...rest }) => ({
+  .transform(({ timing, preferredDate, preferredTimeSlot, measurements, siteConditions, ...rest }) => ({
     ...rest,
     preferredSchedule: (timing === "scheduled"
       ? { kind: "scheduled", date: preferredDate, timeSlot: preferredTimeSlot }
       : { kind: timing }) as PreferredSchedule,
     // Measurements only make sense for remote quotes.
     measurements: rest.mode === "quote_online" ? measurements : null,
+    // Shown to quoting technicians; Get Help Now shares details after acceptance instead.
+    siteConditions: rest.mode === "urgent" ? null : siteConditions,
   }));
 
 export type ServiceRequestFormValues = z.input<typeof createServiceRequestSchema>;

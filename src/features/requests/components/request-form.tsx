@@ -67,6 +67,7 @@ const stepFields: Record<RequestStep, FieldPath<ServiceRequestFormValues>[]> = {
     "preferredTimeSlot",
     "accessInstructions",
     "measurements",
+    "siteConditions",
   ],
   attachments: ["attachments"],
 };
@@ -114,6 +115,7 @@ function emptyValues(initial: Initial): ServiceRequestFormValues {
     preferredTimeSlot: "",
     accessInstructions: "",
     measurements: "",
+    siteConditions: "",
     attachments: [],
   };
 }
@@ -706,6 +708,34 @@ function RequestFormSteps(props: Props) {
                 )}
               />
 
+              {mode && mode !== "urgent" ? (
+                <Controller
+                  control={form.control}
+                  name="siteConditions"
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel htmlFor="req-site">
+                        Site details for quoting <span className="font-normal text-muted-foreground">(optional)</span>
+                      </FieldLabel>
+                      <Textarea
+                        {...field}
+                        value={field.value ?? ""}
+                        id="req-site"
+                        rows={3}
+                        maxLength={500}
+                        aria-invalid={fieldState.invalid}
+                        placeholder="e.g. 3rd-floor flat, no lift, street parking only, plastered brick walls"
+                      />
+                      <FieldDescription>
+                        Visible to technicians who quote. Don&apos;t include gate codes — put those in access
+                        instructions, which only your chosen technician sees.
+                      </FieldDescription>
+                      <FieldError errors={[fieldState.error]} />
+                    </Field>
+                  )}
+                />
+              ) : null}
+
               {mode === "quote_online" ? (
                 <Controller
                   control={form.control}
@@ -965,6 +995,9 @@ function ReviewValues({ values }: { values: ServiceRequestFormValues }) {
       <ReviewRow label="Access instructions" value={values.accessInstructions || "None"} />
       {values.mode === "quote_online" ? (
         <ReviewRow label="Measurements" value={values.measurements || "None"} />
+      ) : null}
+      {values.mode && values.mode !== "urgent" ? (
+        <ReviewRow label="Site details" value={values.siteConditions || "None"} />
       ) : null}
     </>
   );

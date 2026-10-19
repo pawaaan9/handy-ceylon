@@ -9,6 +9,8 @@ import type {
   ServiceRequestStatus,
 } from "@/features/bookings/types";
 import type { sriLankaDistricts } from "@/features/bookings/schemas";
+import type { QuotationDifferences } from "@/features/bookings/quotation";
+import type { VisitSlot } from "@/features/bookings/schemas";
 import type {
   AttachmentKind,
   CancellationReason,
@@ -191,6 +193,8 @@ export type ServiceRequestDoc = {
   urgency: Urgency;
   preferredSchedule: PreferredSchedule;
   measurements: string | null; // quote_online only
+  /** Quote modes: conditions that affect the price (floor, lift, parking…), visible to eligible technicians. */
+  siteConditions: string | null;
   /** Copied out of the customer's draft folder into serviceRequests/{requestId}/media/. */
   attachments: RequestAttachment[];
   selectedTechnicianId: string | null; // [server] set only when a technician is assigned
@@ -240,25 +244,33 @@ export type ServiceRequestEventDoc = {
 export type OfferDoc = {
   technicianId: string;
   status: OfferStatus;
-  inspectionFeeLkr: Lkr | null; // shown to the customer before they confirm the visit
-  etaMinutes: number | null;
+  /** Visit / inspection fee only (never repair charges); shown before the customer confirms. */
+  inspectionFeeLkr: Lkr | null;
+  etaMinutes: number | null; // urgent
+  proposedVisits: VisitSlot[]; // quote_visit: times the technician can come
+  chosenVisit: VisitSlot | null; // quote_visit: the time the customer picked
   message: string | null;
   bookingId: string | null;
+  conversationId: string | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 };
 
-/** quotations/{quotationId} — top level so technicians can list their own. All [server]. */
+/**
+ * quotations/{quotationId} — top level so technicians can list their own. All [server].
+ * Never edited after it is decided: a price change is a new version that
+ * links back to the accepted one, with a reason and itemized differences.
+ */
 export type QuotationDoc = {
   requestId: string;
-  bookingId: string;
+  bookingId: string | null; // null for a Quote Online quotation until the customer selects it
   customerId: string;
   technicianId: string;
   mode: BookingMode;
   status: QuotationStatus;
-  version: number; // 1, 2, 3 — a revision after rejection is a new version
+  version: number; // per technician and request/job: 1, 2, 3
   previousQuotationId: string | null;
-  inspectionFindings: string;
+  inspectionFindings: string | null; // on-site quotations
   lineItems: {
     kind: QuotationLineKind;
     description: string;
@@ -269,13 +281,50 @@ export type QuotationDoc = {
   labourLkr: Lkr; // [server] computed from lineItems, never trusted from the client
   materialsLkr: Lkr;
   additionalLkr: Lkr;
-  inspectionFeeLkr: Lkr; // agreed when the customer confirmed the visit
+  inspectionFeeLkr: Lkr; // visit fee agreed before the visit (0 for Quote Online), kept separate from repairs
   totalLkr: Lkr; // labour + materials + additional + inspection fee
   estimatedDurationHours: number | null;
+  exclusions: string | null; // Quote Online: what the price doesn't cover
+  assumptions: string | null; // Quote Online: what the price is based on
   notes: string | null;
-  rejectionReason: string | null;
+  /** The accepted quotation this one revises (a price change), with the technician's reason. */
+  revisionOfQuotationId: string | null;
+  revisionReason: string | null;
+  differences: QuotationDifferences | null;
+  /** Customer's reason when asking for a revision or rejecting. */
+  decisionReason: string | null;
+  validUntil: Timestamp;
+  conversationId: string | null;
   createdAt: Timestamp;
   decidedAt: Timestamp | null;
+  acceptedAt: Timestamp | null; // kept even if a later revision supersedes it
+  supersededAt: Timestamp | null;
+};
+
+/**
+ * payments/{bookingId} — the amount owed for a job, kept in step with the
+ * booking by the server. No money moves yet: Phase 9 adds collection.
+ */
+export type PaymentDoc = {
+  bookingId: string;
+  requestId: string;
+  customerId: string;
+  technicianId: string;
+  participantIds: [customerId: string, technicianId: string];
+  currency: "LKR";
+  /**
+   * awaiting_completion — job under way; amounts may still change with approved quotations
+   * due                 — payable: the job completed, or a cancellation left a visit fee owing
+   * void                — nothing owed (cancelled before any fee applied)
+   */
+  status: "awaiting_completion" | "due" | "void";
+  visitFeeLkr: Lkr; // inspection / visit fee
+  repairChargesLkr: Lkr; // labour + materials + additional from the accepted quotation
+  totalDueLkr: Lkr;
+  basisQuotationId: string | null; // the accepted quotation the amount comes from
+  collection: null; // Phase 9: method, reference, collectedAt
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 };
 
 /**
@@ -293,7 +342,8 @@ export type BookingDoc = {
   status: BookingStatus;
   /** Snapshot for lists. */
   summary: { title: string; serviceName: string; city: string; district: District };
-  inspectionFeeLkr: Lkr; // 0 = free inspection
+  inspectionFeeLkr: Lkr; // visit / inspection fee; 0 = free (always 0 for Quote Online)
+  scheduledVisit: VisitSlot | null; // quote_visit: the agreed visit time
   etaMinutes: number | null;
   technicianMessage: string | null;
   visitConfirmedAt: Timestamp | null;
@@ -314,7 +364,7 @@ export type BookingDoc = {
     inspectionFeeDue: boolean;
     at: Timestamp;
   } | null;
-  conversationId: string | null; // messaging arrives in a later phase
+  conversationId: string | null; // conversations/{requestId}_{technicianId}
   createdAt: Timestamp;
   updatedAt: Timestamp;
 };
@@ -329,9 +379,11 @@ export type BookingStatusEventDoc = {
   at: Timestamp;
 };
 
-/** conversations/{conversationId} */
+/** conversations/{requestId}_{technicianId} — one thread per request and responding technician. [server] */
 export type ConversationDoc = {
-  participantIds: string[];
+  participantIds: [customerId: string, technicianId: string];
+  customerId: string;
+  technicianId: string;
   bookingId: string | null;
   requestId: string;
   lastMessagePreview: string | null;

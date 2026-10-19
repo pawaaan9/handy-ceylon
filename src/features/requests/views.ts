@@ -27,6 +27,7 @@ export type RequestDetailView = RequestSummaryView & {
   subcategoryName: string | null;
   description: string;
   measurements: string | null;
+  siteConditions: string | null;
   address: AddressSnapshot | null;
   accessInstructions: string | null;
   attachments: (RequestAttachment & { url: string | null })[];

@@ -2,26 +2,27 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
-import { FieldValue, type Timestamp, type Transaction } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, type DocumentSnapshot, type Transaction } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebase/admin";
-import { collections, subcollections } from "@/lib/firestore/collections";
+import { collections } from "@/lib/firestore/collections";
 import type {
   BookingDoc,
   BookingStatusEventDoc,
   OfferDoc,
+  PaymentDoc,
   QuotationDoc,
   ServiceRequestDoc,
-  ServiceRequestEventDoc,
   TechnicianDoc,
 } from "@/lib/firestore/models";
 import { AuthError, UserFacingError } from "@/lib/errors";
 import { formatLkr } from "@/lib/format";
 
-import { isPastDeadline, technicianEligibility, technicianReadiness } from "../eligibility";
-import { computeQuotationTotals } from "../quotation";
+import { accountReadiness, isPastDeadline, technicianEligibility, technicianReadiness } from "../eligibility";
+import { computeQuotationTotals, quotationDifferences } from "../quotation";
 import {
   MAX_QUOTATION_VERSIONS,
+  ON_SITE_QUOTE_VALID_DAYS,
   bookingSteps,
   type AcceptUrgentRequestInput,
   type BookingStep,
@@ -39,94 +40,36 @@ import {
   type CancellationOutcome,
 } from "../state-machine";
 import { bookingStatusLabels, type BookingStatus, type ServiceRequestStatus } from "../types";
-import type {
-  AvailableRequestView,
-  BookingSummaryView,
-  BookingView,
-  QuotationView,
-  TechnicianPublicView,
-} from "../views";
+import type { AvailableRequestView, BookingSummaryView, BookingView, MyResponse, QuotationView } from "../views";
+import {
+  BOOKING_NOT_FOUND,
+  REQUEST_GONE,
+  assertBookingStep,
+  conversationIdFor,
+  createBooking,
+  iso,
+  paymentWrites,
+  recordBookingEvent,
+  recordRequestEvent,
+  refs,
+  requireParticipant,
+  toTechnicianView,
+  writeConversation,
+  type Actor,
+} from "./shared";
+
+export type { Actor } from "./shared";
 
 /**
- * Get Help Now workflow. Every write happens here, inside Firestore
- * transactions, with the actor's uid and role taken from the verified session.
- * Clients only ever name a step ("confirm_visit"); the state machine decides
- * whether it is allowed from the current status, and Security Rules deny all
- * direct client writes to requests, offers, bookings and quotations.
+ * Get Help Now, plus everything that happens to a booking once it exists
+ * (steps, quotations and revisions, decisions, cancellation) for all three
+ * options. Clients only ever name a step; the state machine decides whether
+ * it is allowed from the current status and booking mode.
  */
-export type Actor = { uid: string; role: "customer" | "technician" | "admin" };
-
 const db = () => adminDb();
-const requestRef = (id: string) => db().collection(collections.serviceRequests).doc(id);
-const requestHistoryRef = (id: string) => requestRef(id).collection(subcollections.requestHistory);
-const offerRef = (requestId: string, technicianId: string) =>
-  requestRef(requestId).collection(subcollections.offers).doc(technicianId);
-const technicianRef = (uid: string) => db().collection(collections.technicians).doc(uid);
-const bookingRef = (id: string) => db().collection(collections.bookings).doc(id);
-const bookingHistoryRef = (id: string) => bookingRef(id).collection(subcollections.statusHistory);
-const quotationRef = (id: string) => db().collection(collections.quotations).doc(id);
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-const REQUEST_GONE = "This request is no longer available.";
-const BOOKING_NOT_FOUND = "This job could not be found.";
-const iso = (t: unknown) => (t as Timestamp | null | undefined)?.toDate().toISOString() ?? null;
-
-function recordBookingEvent(
-  tx: Transaction,
-  bookingId: string,
-  from: BookingStatus | null,
-  to: BookingStatus,
-  actor: Actor,
-  note: string | null = null,
-) {
-  tx.create(bookingHistoryRef(bookingId).doc(), {
-    from,
-    to,
-    actorId: actor.uid,
-    actorRole: actor.role,
-    note,
-    at: FieldValue.serverTimestamp(),
-  } satisfies Record<keyof BookingStatusEventDoc, unknown>);
-}
-
-function recordRequestEvent(
-  tx: Transaction,
-  requestId: string,
-  from: ServiceRequestStatus,
-  to: ServiceRequestStatus,
-  actor: Actor | null,
-  note: string | null = null,
-) {
-  tx.create(requestHistoryRef(requestId).doc(), {
-    from,
-    to,
-    actorId: actor?.uid ?? null,
-    actorRole: actor?.role ?? "system",
-    note,
-    at: FieldValue.serverTimestamp(),
-  } satisfies Record<keyof ServiceRequestEventDoc, unknown>);
-}
-
-/** A friendly error instead of the raw state-machine message. */
-function assertBookingStep(from: BookingStatus, to: BookingStatus, role: Actor["role"]) {
-  if (!canTransition(bookingTransitions, from, to, role)) {
-    throw new UserFacingError(
-      `This job is now "${bookingStatusLabels[from].toLowerCase()}", so that step isn't available. Refresh to see the latest.`,
-    );
-  }
-}
-
-/** Only the booking's own customer or technician (or an admin) may touch it. */
-function requireParticipant(booking: BookingDoc | undefined, actor: Actor): BookingDoc {
-  if (!booking) throw new UserFacingError(BOOKING_NOT_FOUND);
-  const isParticipant =
-    (actor.role === "customer" && booking.customerId === actor.uid) ||
-    (actor.role === "technician" && booking.technicianId === actor.uid) ||
-    actor.role === "admin";
-  if (!isParticipant) throw new UserFacingError(BOOKING_NOT_FOUND);
-  return booking;
-}
-
-// ── Technician: find, accept and decline urgent requests ───────────────────
+// ── Technician: find, accept and decline requests ──────────────────────────
 
 /**
  * Accepts an urgent request in one transaction. Firestore serialises
@@ -138,15 +81,17 @@ export async function acceptUrgentRequest(
   technicianUid: string,
   input: AcceptUrgentRequestInput,
 ): Promise<{ bookingId: string; created: boolean }> {
-  const reqRef = requestRef(input.requestId);
-  const newBookingRef = db().collection(collections.bookings).doc();
+  const reqRef = refs.request(input.requestId);
+  const newBookingRef = refs.bookings().doc();
   const actor: Actor = { uid: technicianUid, role: "technician" };
+  const conversationId = conversationIdFor(input.requestId, technicianUid);
 
   const result = await db().runTransaction(async (tx) => {
-    const [reqSnap, techSnap, offerSnap] = await tx.getAll(
+    const [reqSnap, techSnap, offerSnap, conversationSnap] = await tx.getAll(
       reqRef,
-      technicianRef(technicianUid),
-      offerRef(input.requestId, technicianUid),
+      refs.technician(technicianUid),
+      refs.offer(input.requestId, technicianUid),
+      refs.conversation(conversationId),
     );
     if (!reqSnap.exists) throw new UserFacingError(REQUEST_GONE);
     const request = reqSnap.data() as ServiceRequestDoc;
@@ -170,7 +115,7 @@ export async function acceptUrgentRequest(
     if (!techSnap.exists) throw new AuthError("Your technician profile could not be found.", 403);
     const eligibility = technicianEligibility(technicianUid, techSnap.data() as TechnicianDoc, request);
     if (!eligibility.eligible) throw new UserFacingError(eligibility.reason);
-    assertTransition(serviceRequestTransitions, "open", "assigned", "technician");
+    assertTransition(serviceRequestTransitions, "open", "assigned", "technician", "urgent");
 
     const now = FieldValue.serverTimestamp();
     tx.update(reqRef, {
@@ -181,48 +126,35 @@ export async function acceptUrgentRequest(
       offerCount: FieldValue.increment(1),
       updatedAt: now,
     });
-    tx.set(offerRef(reqRef.id, technicianUid), {
+    tx.set(refs.offer(reqRef.id, technicianUid), {
       technicianId: technicianUid,
       status: "selected",
       inspectionFeeLkr: input.inspectionFeeLkr,
       etaMinutes: input.etaMinutes,
+      proposedVisits: [],
+      chosenVisit: null,
       message: input.message,
       bookingId: newBookingRef.id,
+      conversationId,
       createdAt: now,
       updatedAt: now,
     } satisfies Record<keyof OfferDoc, unknown>);
-    tx.create(newBookingRef, {
+    createBooking(tx, newBookingRef, {
       requestId: reqRef.id,
-      customerId: request.customerId,
+      request,
       technicianId: technicianUid,
-      participantIds: [request.customerId, technicianUid],
-      mode: request.mode,
-      categoryId: request.categoryId,
       status: "technician_assigned",
-      summary: {
-        title: request.title,
-        serviceName: request.catalogue.serviceName,
-        city: request.city,
-        district: request.district,
-      },
       inspectionFeeLkr: input.inspectionFeeLkr,
       etaMinutes: input.etaMinutes,
       technicianMessage: input.message,
-      visitConfirmedAt: null,
-      enRouteAt: null,
-      arrivedAt: null,
-      currentQuotationId: null,
-      quotationCount: 0,
-      acceptedQuotationId: null,
-      agreedTotalLkr: null,
-      confirmedAt: null,
-      workStartedAt: null,
-      completedAt: null,
-      cancellation: null,
-      conversationId: null,
-      createdAt: now,
-      updatedAt: now,
-    } satisfies Record<keyof BookingDoc, unknown>);
+      conversationId,
+    });
+    writeConversation(tx, conversationSnap, {
+      requestId: reqRef.id,
+      customerId: request.customerId,
+      technicianId: technicianUid,
+      bookingId: newBookingRef.id,
+    });
     recordRequestEvent(tx, reqRef.id, "open", "assigned", actor);
     recordBookingEvent(
       tx,
@@ -239,24 +171,28 @@ export async function acceptUrgentRequest(
   return { bookingId: result.bookingId, created: result.created };
 }
 
-/** The technician passes on a request; it disappears from their list. Idempotent. */
-export async function declineUrgentRequest(technicianUid: string, requestId: string): Promise<void> {
+/** The technician passes on a request (any option); it disappears from their list. Idempotent. */
+export async function declineRequest(technicianUid: string, requestId: string): Promise<void> {
   await db().runTransaction(async (tx) => {
-    const [reqSnap, offerSnap] = await tx.getAll(requestRef(requestId), offerRef(requestId, technicianUid));
+    const [reqSnap, offerSnap] = await tx.getAll(refs.request(requestId), refs.offer(requestId, technicianUid));
     if (!reqSnap.exists) throw new UserFacingError(REQUEST_GONE);
     const offer = offerSnap.data() as OfferDoc | undefined;
     if (offer?.status === "declined") return;
     if (offer?.status === "selected" && reqSnap.get("selectedTechnicianId") === technicianUid) {
-      throw new UserFacingError("You've accepted this request. Cancel the job instead.");
+      throw new UserFacingError("You've got this job. Cancel the job instead.");
     }
+    if (offer?.status === "pending") throw new UserFacingError("Withdraw your offer first.");
     const now = FieldValue.serverTimestamp();
-    tx.set(offerRef(requestId, technicianUid), {
+    tx.set(refs.offer(requestId, technicianUid), {
       technicianId: technicianUid,
       status: "declined",
       inspectionFeeLkr: null,
       etaMinutes: null,
+      proposedVisits: [],
+      chosenVisit: null,
       message: null,
       bookingId: null,
+      conversationId: offer?.conversationId ?? null,
       createdAt: offer?.createdAt ?? now,
       updatedAt: now,
     } satisfies Record<keyof OfferDoc, unknown>);
@@ -264,25 +200,33 @@ export async function declineUrgentRequest(technicianUid: string, requestId: str
 }
 
 export type AvailableRequests = {
-  /** null when the account can't take jobs at all (no profile, not approved). */
-  technician: { availability: TechnicianDoc["availability"]; canAccept: boolean; blockedReason: string | null } | null;
+  /** null when the account has no technician profile. */
+  technician: {
+    availability: TechnicianDoc["availability"];
+    canAcceptUrgent: boolean;
+    canQuote: boolean;
+    blockedReason: string | null;
+  } | null;
   requests: AvailableRequestView[];
 };
 
 /**
- * Open urgent requests this technician could take: in their categories and
- * districts, not expired, not their own, and not already declined. Shown even
- * while offline (accepting re-checks availability inside the transaction).
+ * Open requests this technician could respond to: in their categories and
+ * districts, not expired, not their own and not declined. Urgent requests
+ * they already answered drop out; quote requests stay, marked with their
+ * response. Shown even while offline (accepting re-checks inside the transaction).
  */
 export async function listAvailableRequests(technicianUid: string): Promise<AvailableRequests> {
-  const techSnap = await technicianRef(technicianUid).get();
+  const techSnap = await refs.technician(technicianUid).get();
   if (!techSnap.exists) return { technician: null, requests: [] };
   const tech = techSnap.data() as TechnicianDoc;
-  const status = technicianReadiness(tech);
+  const urgent = technicianReadiness(tech);
+  const quoting = accountReadiness(tech);
   const technician = {
     availability: tech.availability,
-    canAccept: status.eligible,
-    blockedReason: status.eligible ? null : status.reason,
+    canAcceptUrgent: urgent.eligible,
+    canQuote: quoting.eligible,
+    blockedReason: urgent.eligible ? null : urgent.reason,
   };
   const districts = (tech.serviceDistricts ?? []).slice(0, 30);
   if (districts.length === 0 || (tech.categoryIds ?? []).length === 0) return { technician, requests: [] };
@@ -290,7 +234,6 @@ export async function listAvailableRequests(technicianUid: string): Promise<Avai
   const snap = await db()
     .collection(collections.serviceRequests)
     .where("status", "==", "open")
-    .where("mode", "==", "urgent")
     .where("district", "in", districts)
     .orderBy("createdAt", "desc")
     .limit(100)
@@ -301,16 +244,26 @@ export async function listAvailableRequests(technicianUid: string): Promise<Avai
   });
   if (candidates.length === 0) return { technician, requests: [] };
 
-  const responses = await db().getAll(...candidates.map((d) => offerRef(d.id, technicianUid)));
-  const responded = new Set(responses.filter((s) => s.exists).map((s) => s.ref.parent.parent!.id));
+  const [offers, quotes] = await Promise.all([
+    db().getAll(...candidates.map((d) => refs.offer(d.id, technicianUid))),
+    refs.quotations().where("technicianId", "==", technicianUid).where("status", "==", "submitted").get(),
+  ]);
+  const offerStatus = new Map(offers.filter((s) => s.exists).map((s) => [s.ref.parent.parent!.id, s.get("status") as string]));
+  const quoted = new Set(quotes.docs.map((d) => d.get("requestId") as string));
+
   return {
     technician,
-    requests: candidates
-      .filter((d) => !responded.has(d.id))
-      .map((d) => {
-        const r = d.data() as ServiceRequestDoc;
-        return {
+    requests: candidates.flatMap((d) => {
+      const r = d.data() as ServiceRequestDoc;
+      const offered = offerStatus.get(d.id);
+      if (offered === "declined" || offered === "withdrawn") return [];
+      if (r.mode === "urgent" && offered) return [];
+      const myResponse: MyResponse =
+        offered === "pending" ? "offer_pending" : quoted.has(d.id) ? "quote_submitted" : null;
+      return [
+        {
           id: d.id,
+          mode: r.mode,
           title: r.title,
           description: r.description,
           categoryName: r.catalogue.categoryName,
@@ -318,25 +271,33 @@ export async function listAvailableRequests(technicianUid: string): Promise<Avai
           city: r.city,
           district: r.district,
           urgency: r.urgency,
+          preferredSchedule: r.preferredSchedule,
           attachmentCount: r.attachments.length,
+          myResponse,
           createdAt: iso(r.createdAt)!,
           expiresAt: iso(r.expiresAt)!,
-        };
-      }),
+        },
+      ];
+    }),
   };
 }
 
 /**
- * How many approved technicians are online now for this category and
- * district — what the customer is told while waiting. Never estimated.
+ * Approved, active technicians covering this category and district — and,
+ * for Get Help Now, marked online right now. What customers are told while
+ * waiting; never estimated.
  */
-export async function countAvailableTechnicians(categoryId: string, district: string): Promise<number> {
-  const snap = await db()
+export async function countAvailableTechnicians(
+  categoryId: string,
+  district: string,
+  { requireOnline = true }: { requireOnline?: boolean } = {},
+): Promise<number> {
+  let query = db()
     .collection(collections.technicians)
-    .where("availability", "==", "online")
     .where("verificationStatus", "==", "approved")
-    .where("categoryIds", "array-contains", categoryId)
-    .get();
+    .where("categoryIds", "array-contains", categoryId);
+  if (requireOnline) query = query.where("availability", "==", "online");
+  const snap = await query.get();
   return snap.docs.filter(
     (d) => d.get("accountStatus") === "active" && ((d.get("serviceDistricts") ?? []) as string[]).includes(district),
   ).length;
@@ -344,13 +305,13 @@ export async function countAvailableTechnicians(categoryId: string, district: st
 
 export async function setAvailability(technicianUid: string, availability: TechnicianDoc["availability"]) {
   await db().runTransaction(async (tx) => {
-    const snap = await tx.get(technicianRef(technicianUid));
+    const snap = await tx.get(refs.technician(technicianUid));
     if (!snap.exists) throw new AuthError("Your technician profile could not be found.", 403);
     const tech = snap.data() as TechnicianDoc;
-    if (availability === "online" && (tech.accountStatus !== "active" || tech.verificationStatus !== "approved")) {
+    if (availability === "online" && !accountReadiness(tech).eligible) {
       throw new UserFacingError("Your technician account isn't active, so you can't go online.");
     }
-    tx.update(technicianRef(technicianUid), { availability, updatedAt: FieldValue.serverTimestamp() });
+    tx.update(refs.technician(technicianUid), { availability, updatedAt: FieldValue.serverTimestamp() });
   });
 }
 
@@ -371,30 +332,40 @@ const stepDefinitions: Record<
 export async function runBookingStep(actor: Actor, bookingId: string, step: BookingStep): Promise<void> {
   const def = stepDefinitions[step];
   await db().runTransaction(async (tx) => {
-    const snap = await tx.get(bookingRef(bookingId));
+    const snap = await tx.get(refs.booking(bookingId));
     const booking = requireParticipant(snap.data() as BookingDoc | undefined, actor);
     if (actor.role !== def.role) throw new UserFacingError("Only the other party can do that step.");
     if (booking.status === def.to) return;
-    assertBookingStep(booking.status, def.to, actor.role);
+    assertBookingStep(booking, def.to, actor.role);
+    // Defence in depth: paid work always rests on an accepted quotation.
+    if (def.to === "work_in_progress" && !booking.acceptedQuotationId) {
+      throw new UserFacingError("Work can start only after the customer approves a quotation.");
+    }
 
     const now = FieldValue.serverTimestamp();
-    tx.update(bookingRef(bookingId), { status: def.to, [def.stamp]: now, updatedAt: now });
-    tx.update(requestRef(booking.requestId), { bookingStatus: def.to, updatedAt: now });
+    tx.update(refs.booking(bookingId), { status: def.to, [def.stamp]: now, updatedAt: now });
+    tx.update(refs.request(booking.requestId), { bookingStatus: def.to, updatedAt: now });
     if (def.to === "completed") {
-      tx.update(technicianRef(booking.technicianId), { completedJobs: FieldValue.increment(1) });
+      tx.update(refs.technician(booking.technicianId), { completedJobs: FieldValue.increment(1) });
+      paymentWrites.completed(tx, bookingId);
     }
     recordBookingEvent(tx, bookingId, booking.status, def.to, actor);
   });
 }
 
-// ── Quotations ──────────────────────────────────────────────────────────────
+// ── Quotations on a booking (on-site quotes and price-change revisions) ─────
 
-/** Same booking + submission key → same quotation id, so retries can't add versions. */
-export function quotationIdFor(bookingId: string, submissionKey: string): string {
-  return createHash("sha256").update(`${bookingId}:${submissionKey}`).digest("base64url").slice(0, 24);
+/** Same scope + submission key → same quotation id, so retries can't add versions. */
+export function quotationIdFor(scope: string, submissionKey: string): string {
+  return createHash("sha256").update(`${scope}:${submissionKey}`).digest("base64url").slice(0, 24);
 }
 
-/** Technician submits inspection findings and an itemized quotation (or a revision after rejection). */
+/**
+ * Technician submits an itemized quotation for a booking: the first one after
+ * inspecting, a revision the customer asked for, or — once a quotation was
+ * accepted — a price change, which needs a reason and records the itemized
+ * differences. The accepted quotation itself is never edited.
+ */
 export async function submitQuotation(
   technicianUid: string,
   input: SubmitQuotationInput,
@@ -403,25 +374,35 @@ export async function submitQuotation(
   const actor: Actor = { uid: technicianUid, role: "technician" };
 
   return db().runTransaction(async (tx) => {
-    const [bookingSnap, existing] = await tx.getAll(bookingRef(input.bookingId), quotationRef(id));
+    const [bookingSnap, existing] = await tx.getAll(refs.booking(input.bookingId), refs.quotation(id));
     const booking = bookingSnap.data() as BookingDoc | undefined;
     if (!booking || booking.technicianId !== technicianUid) throw new UserFacingError(BOOKING_NOT_FOUND);
     if (existing.exists) return { id, created: false };
-    assertBookingStep(booking.status, "awaiting_customer_approval", "technician");
+    assertBookingStep(booking, "awaiting_customer_approval", "technician");
     if (booking.quotationCount >= MAX_QUOTATION_VERSIONS) {
       throw new UserFacingError(
         `You've sent ${MAX_QUOTATION_VERSIONS} quotations for this job. Cancel the job if you can't agree a price.`,
       );
     }
-    const previous = booking.currentQuotationId ? await tx.get(quotationRef(booking.currentQuotationId)) : null;
+    const [previous, accepted] = await Promise.all([
+      booking.currentQuotationId ? tx.get(refs.quotation(booking.currentQuotationId)) : Promise.resolve(null),
+      booking.acceptedQuotationId ? tx.get(refs.quotation(booking.acceptedQuotationId)) : Promise.resolve(null),
+    ]);
+    const acceptedQuote = accepted?.data() as QuotationDoc | undefined;
+    if (acceptedQuote && !input.revisionReason) {
+      throw new UserFacingError(
+        "Explain why the price or scope changed — the customer must approve the difference before extra work.",
+        "revisionReason",
+      );
+    }
 
     const totals = computeQuotationTotals(input.lineItems, booking.inspectionFeeLkr);
     const version = booking.quotationCount + 1;
     const now = FieldValue.serverTimestamp();
     if (previous?.get("status") === "submitted") {
-      tx.update(previous.ref, { status: "superseded", decidedAt: now });
+      tx.update(previous.ref, { status: "superseded", supersededAt: now, decidedAt: now });
     }
-    tx.create(quotationRef(id), {
+    tx.create(refs.quotation(id), {
       requestId: booking.requestId,
       bookingId: input.bookingId,
       customerId: booking.customerId,
@@ -433,18 +414,27 @@ export async function submitQuotation(
       inspectionFindings: input.inspectionFindings,
       ...totals,
       estimatedDurationHours: input.estimatedDurationHours,
+      exclusions: null,
+      assumptions: null,
       notes: input.notes,
-      rejectionReason: null,
+      revisionOfQuotationId: acceptedQuote ? booking.acceptedQuotationId : null,
+      revisionReason: acceptedQuote ? input.revisionReason : null,
+      differences: acceptedQuote ? quotationDifferences(acceptedQuote, totals) : null,
+      decisionReason: null,
+      validUntil: Timestamp.fromMillis(Date.now() + ON_SITE_QUOTE_VALID_DAYS * DAY_MS),
+      conversationId: booking.conversationId,
       createdAt: now,
       decidedAt: null,
+      acceptedAt: null,
+      supersededAt: null,
     } satisfies Record<keyof QuotationDoc, unknown>);
-    tx.update(bookingRef(input.bookingId), {
+    tx.update(refs.booking(input.bookingId), {
       status: "awaiting_customer_approval",
       currentQuotationId: id,
       quotationCount: version,
       updatedAt: now,
     });
-    tx.update(requestRef(booking.requestId), {
+    tx.update(refs.request(booking.requestId), {
       bookingStatus: "awaiting_customer_approval",
       quotationCount: FieldValue.increment(1),
       updatedAt: now,
@@ -455,38 +445,81 @@ export async function submitQuotation(
       booking.status,
       "awaiting_customer_approval",
       actor,
-      `Quotation v${version}: ${formatLkr(totals.totalLkr)}`,
+      acceptedQuote
+        ? `Revised quotation v${version}: ${formatLkr(totals.totalLkr)} (was ${formatLkr(acceptedQuote.totalLkr)}) — ${input.revisionReason}`
+        : `Quotation v${version}: ${formatLkr(totals.totalLkr)}`,
     );
     return { id, created: true };
   });
 }
 
-/** Customer approves (→ confirmed job) or rejects (→ technician may revise) the current quotation. */
+/**
+ * Customer decides the current quotation on a booking:
+ * - approve → job confirmed at this price (a previously accepted quotation is superseded, not edited)
+ * - request_revision → the technician sends a new version
+ * - reject → the job is cancelled
+ */
 export async function decideQuotation(customerUid: string, input: DecideQuotationInput): Promise<void> {
   const actor: Actor = { uid: customerUid, role: "customer" };
-  await db().runTransaction(async (tx) => {
-    const qSnap = await tx.get(quotationRef(input.quotationId));
+  const result = await db().runTransaction(async (tx) => {
+    const qSnap = await tx.get(refs.quotation(input.quotationId));
     const quotation = qSnap.data() as QuotationDoc | undefined;
     if (!quotation || quotation.customerId !== customerUid) throw new UserFacingError("This quotation could not be found.");
-    const bSnap = await tx.get(bookingRef(quotation.bookingId));
+    if (!quotation.bookingId) throw new UserFacingError("Select this quotation from your request instead.");
+    const [bSnap, reqSnap] = await tx.getAll(refs.booking(quotation.bookingId), refs.request(quotation.requestId));
     const booking = requireParticipant(bSnap.data() as BookingDoc | undefined, actor);
 
-    const approve = input.decision === "approve";
-    const target = approve ? "accepted" : "rejected";
-    if (quotation.status === target) return; // retried decision
+    const target = { approve: "accepted", request_revision: "revision_requested", reject: "rejected" }[input.decision];
+    if (quotation.status === target) return { expired: false }; // retried decision
     if (quotation.status !== "submitted" || booking.currentQuotationId !== input.quotationId) {
       throw new UserFacingError("This quotation has already been decided or replaced. Refresh to see the latest.");
     }
-    const to: BookingStatus = approve ? "confirmed" : "quote_rejected";
-    assertBookingStep(booking.status, to, "customer");
-    assertTransition(quotationTransitions, "submitted", target, "customer");
-
     const now = FieldValue.serverTimestamp();
+
+    if (input.decision === "approve" && quotation.validUntil && isPastDeadline(quotation.validUntil)) {
+      assertTransition(quotationTransitions, "submitted", "expired", "system");
+      tx.update(qSnap.ref, { status: "expired", decidedAt: now });
+      tx.update(bSnap.ref, { status: "quote_rejected", updatedAt: now });
+      tx.update(reqSnap.ref, { bookingStatus: "quote_rejected", updatedAt: now });
+      recordBookingEvent(tx, quotation.bookingId, booking.status, "quote_rejected", null, "Quotation expired before approval");
+      return { expired: true };
+    }
+
+    if (input.decision === "reject") {
+      assertTransition(quotationTransitions, "submitted", "rejected", "customer");
+      assertBookingStep(booking, "cancelled", "customer");
+      const outcome = cancellationOutcome(booking.status, "customer", booking.inspectionFeeLkr);
+      tx.update(qSnap.ref, { status: "rejected", decisionReason: input.reason, decidedAt: now });
+      writeCancellation(tx, {
+        bookingId: quotation.bookingId,
+        booking,
+        request: reqSnap.data() as ServiceRequestDoc | undefined,
+        currentQuotation: null, // decided above
+        restore: [],
+        actor,
+        reason: `Quotation rejected: ${input.reason}`,
+        outcome,
+      });
+      return { expired: false };
+    }
+
+    const approve = input.decision === "approve";
+    const to: BookingStatus = approve ? "confirmed" : "quote_rejected";
+    assertBookingStep(booking, to, "customer");
+    assertTransition(quotationTransitions, "submitted", target as "accepted" | "revision_requested", "customer");
+    const previousAccepted =
+      approve && booking.acceptedQuotationId ? await tx.get(refs.quotation(booking.acceptedQuotationId)) : null;
+
     tx.update(qSnap.ref, {
       status: target,
       decidedAt: now,
-      rejectionReason: approve ? null : input.reason,
+      decisionReason: approve ? null : input.reason,
+      ...(approve ? { acceptedAt: now } : {}),
     });
+    if (previousAccepted?.exists) {
+      assertTransition(quotationTransitions, "accepted", "superseded", "customer");
+      tx.update(previousAccepted.ref, { status: "superseded", supersededAt: now });
+    }
     tx.update(bSnap.ref, {
       status: to,
       updatedAt: now,
@@ -494,106 +527,185 @@ export async function decideQuotation(customerUid: string, input: DecideQuotatio
         ? { acceptedQuotationId: input.quotationId, agreedTotalLkr: quotation.totalLkr, confirmedAt: now }
         : {}),
     });
-    tx.update(requestRef(booking.requestId), {
+    tx.update(reqSnap.ref, {
       bookingStatus: to,
       updatedAt: now,
       ...(approve ? { acceptedQuotationId: input.quotationId } : {}),
     });
+    if (approve) paymentWrites.accepted(tx, quotation.bookingId, input.quotationId, quotation);
     recordBookingEvent(
       tx,
       quotation.bookingId,
       booking.status,
       to,
       actor,
-      approve ? `Approved ${formatLkr(quotation.totalLkr)}` : `Rejected: ${input.reason}`,
+      approve
+        ? `Approved ${formatLkr(quotation.totalLkr)}${previousAccepted?.exists ? ` (was ${formatLkr(previousAccepted.get("totalLkr"))})` : ""}`
+        : `Revision requested: ${input.reason}`,
     );
+    return { expired: false };
   });
+  if (result.expired) {
+    throw new UserFacingError("This quotation has expired. The technician has been asked for a revised one.");
+  }
 }
 
 // ── Cancellation ────────────────────────────────────────────────────────────
 
+type CancellationWrite = {
+  bookingId: string;
+  booking: BookingDoc;
+  request: ServiceRequestDoc | undefined;
+  /** Pre-read current quotation, withdrawn if still pending. */
+  currentQuotation: DocumentSnapshot | null;
+  /** Pre-read not_selected offers/quotations to restore when the request reopens. */
+  restore: DocumentSnapshot[];
+  actor: Actor;
+  reason: string;
+  outcome: CancellationOutcome;
+};
+
+/** All cancellation writes; every read must have happened before this is called. */
+function writeCancellation(tx: Transaction, c: CancellationWrite) {
+  const now = FieldValue.serverTimestamp();
+  const { booking, request, actor, outcome } = c;
+  tx.update(refs.booking(c.bookingId), {
+    status: "cancelled",
+    cancellation: {
+      by: actor.role,
+      actorId: actor.uid,
+      reason: c.reason,
+      fromStatus: booking.status,
+      inspectionFeeDue: outcome.inspectionFeeDue,
+      at: now,
+    },
+    updatedAt: now,
+  });
+  paymentWrites.cancelled(tx, c.bookingId, outcome.inspectionFeeDue ? booking.inspectionFeeLkr : 0);
+  if (c.currentQuotation?.get("status") === "submitted") {
+    assertTransition(quotationTransitions, "submitted", "withdrawn", actor.role);
+    tx.update(c.currentQuotation.ref, { status: "withdrawn", decidedAt: now });
+  }
+
+  // Only touch the request if this booking is still the one it points at.
+  if (request?.status === "assigned" && request.bookingId === c.bookingId) {
+    if (outcome.reopensRequest) {
+      const to: ServiceRequestStatus = isPastDeadline(request.expiresAt) ? "expired" : "open";
+      assertTransition(serviceRequestTransitions, "assigned", to, "technician");
+      tx.update(refs.request(booking.requestId), {
+        status: to,
+        selectedTechnicianId: null,
+        bookingId: null,
+        bookingStatus: null,
+        acceptedQuotationId: null,
+        updatedAt: now,
+      });
+      tx.set(refs.offer(booking.requestId, booking.technicianId), { status: "withdrawn", updatedAt: now }, { merge: true });
+      if (to === "open") {
+        // Give the other technicians' offers and quotations back to the customer.
+        for (const snap of c.restore) {
+          const isQuotation = snap.ref.parent.id === collections.quotations;
+          if (isQuotation && isPastDeadline(snap.get("validUntil"))) continue;
+          tx.update(snap.ref, isQuotation ? { status: "submitted", decidedAt: null } : { status: "pending", updatedAt: now });
+        }
+      }
+      recordRequestEvent(tx, booking.requestId, "assigned", to, actor, `Technician withdrew: ${c.reason}`);
+    } else {
+      assertTransition(serviceRequestTransitions, "assigned", "cancelled", actor.role);
+      tx.update(refs.request(booking.requestId), {
+        status: "cancelled",
+        bookingStatus: "cancelled",
+        cancellation: { by: actor.role, actorId: actor.uid, reason: "booking_cancelled", note: c.reason, at: now },
+        updatedAt: now,
+      });
+      recordRequestEvent(tx, booking.requestId, "assigned", "cancelled", actor, c.reason);
+    }
+  }
+  recordBookingEvent(
+    tx,
+    c.bookingId,
+    booking.status,
+    "cancelled",
+    actor,
+    outcome.inspectionFeeDue ? `${c.reason} (visit fee ${formatLkr(booking.inspectionFeeLkr)} due)` : c.reason,
+  );
+}
+
 /**
  * Who may cancel when is the bookingTransitions table. A technician pulling
- * out before arrival reopens the request for other technicians (or expires
- * it, if its deadline passed); any other cancellation closes the request.
+ * out before arrival reopens the request (restoring other technicians' offers
+ * or quotations), or expires it if its deadline passed; any other
+ * cancellation closes the request.
  */
 export async function cancelBooking(actor: Actor, input: CancelBookingInput): Promise<CancellationOutcome> {
   return db().runTransaction(async (tx) => {
-    const bSnap = await tx.get(bookingRef(input.bookingId));
+    const bSnap = await tx.get(refs.booking(input.bookingId));
     const booking = requireParticipant(bSnap.data() as BookingDoc | undefined, actor);
     if (booking.status === "cancelled") {
       return { reopensRequest: false, inspectionFeeDue: booking.cancellation?.inspectionFeeDue ?? false };
     }
-    if (!canTransition(bookingTransitions, booking.status, "cancelled", actor.role)) {
+    if (!canTransition(bookingTransitions, booking.status, "cancelled", actor.role, booking.mode)) {
       throw new UserFacingError(
         booking.status === "completed"
           ? "This job is already completed."
           : `You can't cancel once the job is "${bookingStatusLabels[booking.status].toLowerCase()}". Contact Handy Ceylon support.`,
       );
     }
-    const [reqSnap, quotationSnap] = await Promise.all([
-      tx.get(requestRef(booking.requestId)),
-      booking.currentQuotationId ? tx.get(quotationRef(booking.currentQuotationId)) : Promise.resolve(null),
-    ]);
-    const request = reqSnap.data() as ServiceRequestDoc | undefined;
     const outcome = cancellationOutcome(booking.status, actor.role, booking.inspectionFeeLkr);
-    const now = FieldValue.serverTimestamp();
-
-    tx.update(bSnap.ref, {
-      status: "cancelled",
-      cancellation: {
-        by: actor.role,
-        actorId: actor.uid,
-        reason: input.reason,
-        fromStatus: booking.status,
-        inspectionFeeDue: outcome.inspectionFeeDue,
-        at: now,
-      },
-      updatedAt: now,
-    });
-    if (quotationSnap?.get("status") === "submitted") {
-      assertTransition(quotationTransitions, "submitted", "withdrawn", actor.role);
-      tx.update(quotationSnap.ref, { status: "withdrawn", decidedAt: now });
-    }
-
-    // Only touch the request if this booking is still the one it points at.
-    if (request?.status === "assigned" && request.bookingId === input.bookingId) {
-      if (outcome.reopensRequest) {
-        const to: ServiceRequestStatus = isPastDeadline(request.expiresAt) ? "expired" : "open";
-        assertTransition(serviceRequestTransitions, "assigned", to, "technician");
-        tx.update(reqSnap.ref, {
-          status: to,
-          selectedTechnicianId: null,
-          bookingId: null,
-          bookingStatus: null,
-          updatedAt: now,
-        });
-        tx.update(offerRef(booking.requestId, booking.technicianId), { status: "withdrawn", updatedAt: now });
-        recordRequestEvent(tx, booking.requestId, "assigned", to, actor, `Technician withdrew: ${input.reason}`);
-      } else {
-        assertTransition(serviceRequestTransitions, "assigned", "cancelled", actor.role);
-        tx.update(reqSnap.ref, {
-          status: "cancelled",
-          bookingStatus: "cancelled",
-          cancellation: { by: actor.role, actorId: actor.uid, reason: "booking_cancelled", note: input.reason, at: now },
-          updatedAt: now,
-        });
-        recordRequestEvent(tx, booking.requestId, "assigned", "cancelled", actor, input.reason);
-      }
-    }
-    recordBookingEvent(
-      tx,
-      input.bookingId,
-      booking.status,
-      "cancelled",
+    const [reqSnap, quotationSnap, restoreOffers, restoreQuotes] = await Promise.all([
+      tx.get(refs.request(booking.requestId)),
+      booking.currentQuotationId ? tx.get(refs.quotation(booking.currentQuotationId)) : Promise.resolve(null),
+      outcome.reopensRequest ? tx.get(refs.offers(booking.requestId).where("status", "==", "not_selected")) : null,
+      outcome.reopensRequest
+        ? tx.get(refs.quotations().where("requestId", "==", booking.requestId).where("status", "==", "not_selected"))
+        : null,
+    ]);
+    writeCancellation(tx, {
+      bookingId: input.bookingId,
+      booking,
+      request: reqSnap.data() as ServiceRequestDoc | undefined,
+      currentQuotation: quotationSnap,
+      restore: [...(restoreOffers?.docs ?? []), ...(restoreQuotes?.docs ?? [])],
       actor,
-      outcome.inspectionFeeDue ? `${input.reason} (inspection fee ${formatLkr(booking.inspectionFeeLkr)} due)` : input.reason,
-    );
+      reason: input.reason,
+      outcome,
+    });
     return outcome;
   });
 }
 
 // ── Reads ───────────────────────────────────────────────────────────────────
+
+/** Serialisable quotation; a pending one past its validUntil reads as expired. */
+export function toQuotationView(id: string, q: QuotationDoc): QuotationView {
+  const expired = q.status === "submitted" && q.validUntil && isPastDeadline(q.validUntil);
+  return {
+    id,
+    status: expired ? "expired" : q.status,
+    version: q.version,
+    mode: q.mode,
+    technicianId: q.technicianId,
+    inspectionFindings: q.inspectionFindings ?? null,
+    lineItems: q.lineItems,
+    labourLkr: q.labourLkr,
+    materialsLkr: q.materialsLkr,
+    additionalLkr: q.additionalLkr,
+    inspectionFeeLkr: q.inspectionFeeLkr,
+    totalLkr: q.totalLkr,
+    estimatedDurationHours: q.estimatedDurationHours,
+    exclusions: q.exclusions ?? null,
+    assumptions: q.assumptions ?? null,
+    notes: q.notes,
+    revisionOfQuotationId: q.revisionOfQuotationId ?? null,
+    revisionReason: q.revisionReason ?? null,
+    differences: q.differences ?? null,
+    decisionReason: q.decisionReason ?? null,
+    createdAt: iso(q.createdAt)!,
+    validUntil: iso(q.validUntil) ?? iso(q.createdAt)!,
+    decidedAt: iso(q.decidedAt),
+    acceptedAt: iso(q.acceptedAt),
+  };
+}
 
 function toSummary(id: string, b: BookingDoc): BookingSummaryView {
   return {
@@ -613,8 +725,8 @@ function toSummary(id: string, b: BookingDoc): BookingSummaryView {
 }
 
 export async function listTechnicianBookings(technicianUid: string, limit = 50): Promise<BookingSummaryView[]> {
-  const snap = await db()
-    .collection(collections.bookings)
+  const snap = await refs
+    .bookings()
     .where("technicianId", "==", technicianUid)
     .orderBy("updatedAt", "desc")
     .limit(limit)
@@ -622,27 +734,9 @@ export async function listTechnicianBookings(technicianUid: string, limit = 50):
   return snap.docs.map((d) => toSummary(d.id, d.data() as BookingDoc));
 }
 
-function toTechnicianView(uid: string, t: TechnicianDoc, showPhone: boolean): TechnicianPublicView {
-  return {
-    uid,
-    displayName: t.displayName,
-    photoURL: t.photoURL ?? null,
-    phoneNumber: showPhone ? t.phoneNumber : null,
-    verified: t.verificationStatus === "approved" && t.accountStatus === "active",
-    approvedAt: iso(t.approvedAt),
-    yearsOfExperience: t.yearsOfExperience ?? 0,
-    skills: t.skills ?? [],
-    city: t.city,
-    district: t.district,
-    ratingAverage: t.ratingAverage ?? 0,
-    ratingCount: t.ratingCount ?? 0,
-    completedJobs: t.completedJobs ?? 0,
-  };
-}
-
 /** The booking for one of its participants (or an admin); null for anyone else. */
 export async function getBookingView(viewer: Actor, bookingId: string): Promise<BookingView | null> {
-  const snap = await bookingRef(bookingId).get();
+  const snap = await refs.booking(bookingId).get();
   if (!snap.exists) return null;
   const booking = snap.data() as BookingDoc;
   const allowed =
@@ -651,43 +745,28 @@ export async function getBookingView(viewer: Actor, bookingId: string): Promise<
     (viewer.role === "technician" && booking.technicianId === viewer.uid);
   if (!allowed) return null;
 
-  const [quotationSnap, historySnap, techSnap] = await Promise.all([
-    db().collection(collections.quotations).where("bookingId", "==", bookingId).get(),
-    bookingHistoryRef(bookingId).orderBy("at", "asc").get(),
-    technicianRef(booking.technicianId).get(),
+  const [quotationSnap, historySnap, techSnap, paymentSnap] = await Promise.all([
+    refs.quotations().where("bookingId", "==", bookingId).get(),
+    refs.bookingHistory(bookingId).orderBy("at", "asc").get(),
+    refs.technician(booking.technicianId).get(),
+    refs.payment(bookingId).get(),
   ]);
-  const quotations: QuotationView[] = quotationSnap.docs
-    .map((d) => {
-      const q = d.data() as QuotationDoc;
-      return {
-        id: d.id,
-        status: q.status,
-        version: q.version,
-        inspectionFindings: q.inspectionFindings,
-        lineItems: q.lineItems,
-        labourLkr: q.labourLkr,
-        materialsLkr: q.materialsLkr,
-        additionalLkr: q.additionalLkr,
-        inspectionFeeLkr: q.inspectionFeeLkr,
-        totalLkr: q.totalLkr,
-        estimatedDurationHours: q.estimatedDurationHours,
-        notes: q.notes,
-        rejectionReason: q.rejectionReason,
-        createdAt: iso(q.createdAt)!,
-        decidedAt: iso(q.decidedAt),
-      };
-    })
+  const quotations = quotationSnap.docs
+    .map((d) => toQuotationView(d.id, d.data() as QuotationDoc))
     .sort((a, b) => b.version - a.version);
 
   const active = !["completed", "cancelled"].includes(booking.status);
   const role = viewer.role;
   const current = quotations.find((q) => q.id === booking.currentQuotationId);
+  const can = (to: BookingStatus) => canTransition(bookingTransitions, booking.status, to, role, booking.mode);
+  const payment = paymentSnap.data() as PaymentDoc | undefined;
 
   return {
     ...toSummary(snap.id, booking),
     customerId: booking.customerId,
     technicianId: booking.technicianId,
     etaMinutes: booking.etaMinutes,
+    scheduledVisit: booking.scheduledVisit ?? null,
     technicianMessage: booking.technicianMessage,
     visitConfirmedAt: iso(booking.visitConfirmedAt),
     enRouteAt: iso(booking.enRouteAt),
@@ -696,6 +775,8 @@ export async function getBookingView(viewer: Actor, bookingId: string): Promise<
     workStartedAt: iso(booking.workStartedAt),
     completedAt: iso(booking.completedAt),
     quotationCount: booking.quotationCount,
+    acceptedQuotationId: booking.acceptedQuotationId,
+    conversationId: booking.conversationId ?? null,
     cancellation: booking.cancellation
       ? {
           by: booking.cancellation.by,
@@ -705,6 +786,14 @@ export async function getBookingView(viewer: Actor, bookingId: string): Promise<
           at: iso(booking.cancellation.at)!,
         }
       : null,
+    payment: payment
+      ? {
+          status: payment.status,
+          visitFeeLkr: payment.visitFeeLkr,
+          repairChargesLkr: payment.repairChargesLkr,
+          totalDueLkr: payment.totalDueLkr,
+        }
+      : null,
     technician: techSnap.exists ? toTechnicianView(techSnap.id, techSnap.data() as TechnicianDoc, active) : null,
     quotations,
     history: historySnap.docs.map((d) => {
@@ -712,22 +801,19 @@ export async function getBookingView(viewer: Actor, bookingId: string): Promise<
       return { from: e.from, to: e.to, actorRole: e.actorRole, note: e.note, at: iso(e.at)! };
     }),
     allowed: {
-      steps: bookingSteps.filter(
-        (step) =>
-          stepDefinitions[step].role === role &&
-          canTransition(bookingTransitions, booking.status, stepDefinitions[step].to, role),
-      ),
+      steps: bookingSteps.filter((step) => {
+        const def = stepDefinitions[step];
+        if (def.role !== role || !can(def.to)) return false;
+        return def.to !== "work_in_progress" || Boolean(booking.acceptedQuotationId);
+      }),
       submitQuotation:
-        role === "technician" &&
-        canTransition(bookingTransitions, booking.status, "awaiting_customer_approval", role) &&
-        booking.quotationCount < MAX_QUOTATION_VERSIONS,
+        role === "technician" && can("awaiting_customer_approval") && booking.quotationCount < MAX_QUOTATION_VERSIONS,
+      quotationIsPriceChange: Boolean(booking.acceptedQuotationId),
       decideQuotationId:
         role === "customer" && booking.status === "awaiting_customer_approval" && current?.status === "submitted"
           ? current.id
           : null,
-      cancel: canTransition(bookingTransitions, booking.status, "cancelled", role)
-        ? cancellationOutcome(booking.status, role, booking.inspectionFeeLkr)
-        : null,
+      cancel: can("cancelled") ? cancellationOutcome(booking.status, role, booking.inspectionFeeLkr) : null,
     },
   };
 }

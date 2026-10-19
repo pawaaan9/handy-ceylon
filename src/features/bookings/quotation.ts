@@ -30,3 +30,38 @@ export function computeQuotationTotals(lines: QuotationLineInput[], inspectionFe
     totalLkr: labourLkr + materialsLkr + additionalLkr + inspectionFeeLkr,
   };
 }
+
+type DiffLine = Pick<QuotationTotals["lineItems"][number], "kind" | "description" | "quantity" | "unitPriceLkr" | "amountLkr">;
+
+export type QuotationDifferences = {
+  added: DiffLine[];
+  removed: DiffLine[];
+  changed: { kind: QuotationLineKind; description: string; beforeLkr: number; afterLkr: number }[];
+  /** New total minus the accepted total (positive = more expensive). */
+  totalChangeLkr: number;
+};
+
+const lineKey = (l: Pick<DiffLine, "kind" | "description">) => `${l.kind}:${l.description.trim().toLowerCase()}`;
+
+/**
+ * Itemized difference between an accepted quotation and its revision, stored
+ * on the revision so the customer approves exactly what changed.
+ */
+export function quotationDifferences(
+  accepted: { lineItems: DiffLine[]; totalLkr: number },
+  revised: { lineItems: DiffLine[]; totalLkr: number },
+): QuotationDifferences {
+  const before = new Map(accepted.lineItems.map((l) => [lineKey(l), l]));
+  const after = new Map(revised.lineItems.map((l) => [lineKey(l), l]));
+  return {
+    added: revised.lineItems.filter((l) => !before.has(lineKey(l))),
+    removed: accepted.lineItems.filter((l) => !after.has(lineKey(l))),
+    changed: revised.lineItems.flatMap((l) => {
+      const old = before.get(lineKey(l));
+      return old && old.amountLkr !== l.amountLkr
+        ? [{ kind: l.kind, description: l.description, beforeLkr: old.amountLkr, afterLkr: l.amountLkr }]
+        : [];
+    }),
+    totalChangeLkr: revised.totalLkr - accepted.totalLkr,
+  };
+}

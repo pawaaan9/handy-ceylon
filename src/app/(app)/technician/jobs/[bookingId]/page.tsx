@@ -10,6 +10,7 @@ import { addressLines, formatPhone } from "@/features/addresses/format";
 import { requireRole } from "@/features/auth/server/dal";
 import { BookingPanel } from "@/features/bookings/components/booking-panel";
 import { bookingIdSchema } from "@/features/bookings/schemas";
+import { bookingModeLabels } from "@/features/bookings/types";
 import { getBookingView } from "@/features/bookings/server/repository";
 import { getRequestForViewer } from "@/features/requests/server/repository";
 import { urgencyOptions } from "@/features/requests/types";
@@ -53,14 +54,22 @@ async function TechnicianJobContent({ params, searchParams }: PageProps<"/techni
           travelling.
         </FormAlert>
       ) : null}
+      {booking.mode === "quote_online" && booking.status === "confirmed" ? (
+        <FormAlert tone="info" title="Price agreed for the quoted scope">
+          If the site differs from the description, send a revised quotation with the reason before doing any extra
+          paid work. The customer must approve it.
+        </FormAlert>
+      ) : null}
 
       <div>
-        <p className="text-sm font-semibold text-urgent">Get Help Now · {booking.serviceName}</p>
+        <p className="text-sm font-semibold text-urgent">
+          {bookingModeLabels[booking.mode]} · {booking.serviceName}
+        </p>
         <h1 className="mt-1 text-2xl font-bold break-words text-foreground sm:text-3xl">{booking.title}</h1>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
-        <BookingPanel booking={booking} audience="technician" />
+        <BookingPanel booking={booking} audience="technician" viewerUid={user.uid} />
         <div className="space-y-5">
           {request ? (
             <Panel title="The problem">

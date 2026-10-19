@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { technicianEligibility } from "./eligibility";
-import { computeQuotationTotals } from "./quotation";
+import { addDays, colomboToday } from "@/lib/dates";
+
+import { computeQuotationTotals, quotationDifferences } from "./quotation";
 import {
   acceptUrgentRequestSchema,
   decideQuotationSchema,
   MAX_QUOTATION_LINES,
   submitQuotationSchema,
+  submitRemoteQuotationSchema,
+  submitVisitOfferSchema,
 } from "./schemas";
 
 const quotation = (overrides: Record<string, unknown> = {}) => ({
@@ -55,11 +59,6 @@ describe("quotation totals", () => {
     expect(submitQuotationSchema.safeParse(quotation({ lineItems: many })).success).toBe(false);
   });
 
-  it("requires a reason to reject, not to approve", () => {
-    expect(decideQuotationSchema.safeParse({ quotationId: "q1", decision: "approve", reason: "" }).success).toBe(true);
-    expect(decideQuotationSchema.safeParse({ quotationId: "q1", decision: "reject", reason: "" }).success).toBe(false);
-    expect(decideQuotationSchema.safeParse({ quotationId: "q1", decision: "reject", reason: "Too expensive" }).success).toBe(true);
-  });
 });
 
 describe("acceptUrgentRequestSchema", () => {
@@ -105,5 +104,79 @@ describe("technicianEligibility", () => {
     expect(reason({}, { categoryId: "electrical" })).toMatch(/categories/);
     expect(reason({}, { district: "Galle" })).toMatch(/districts/);
     expect(reason({}, {}, "alice")).toMatch(/your own request/);
+  });
+});
+
+describe("quotationDifferences", () => {
+  it("itemizes added, removed and changed lines and the total change", () => {
+    const line = (kind: "labour" | "materials" | "additional", description: string, amountLkr: number) => ({
+      kind,
+      description,
+      quantity: 1,
+      unitPriceLkr: amountLkr,
+      amountLkr,
+    });
+    const diff = quotationDifferences(
+      { lineItems: [line("labour", "Tile floor", 20000), line("materials", "Tiles", 30000)], totalLkr: 50000 },
+      {
+        lineItems: [line("labour", "Tile floor", 26000), line("materials", "tiles ", 30000), line("additional", "Damp treatment", 8000)],
+        totalLkr: 64000,
+      },
+    );
+    expect(diff.added.map((l) => l.description)).toEqual(["Damp treatment"]);
+    expect(diff.removed).toEqual([]);
+    expect(diff.changed).toEqual([{ kind: "labour", description: "Tile floor", beforeLkr: 20000, afterLkr: 26000 }]);
+    expect(diff.totalChangeLkr).toBe(14000);
+  });
+});
+
+describe("Get a Quote schemas", () => {
+  const today = colomboToday();
+
+  it("takes a visit fee and up to three distinct, upcoming visit times", () => {
+    const offer = (o: Record<string, unknown>) =>
+      submitVisitOfferSchema.safeParse({
+        requestId: "r1",
+        inspectionFeeLkr: "1500",
+        proposedVisits: [{ date: addDays(today, 1), timeSlot: "morning" }],
+        message: "",
+        ...o,
+      });
+    expect(offer({}).success).toBe(true);
+    expect(offer({ proposedVisits: [] }).success).toBe(false);
+    expect(offer({ proposedVisits: [{ date: addDays(today, -1), timeSlot: "morning" }] }).success).toBe(false);
+    expect(offer({ proposedVisits: [{ date: addDays(today, 31), timeSlot: "morning" }] }).success).toBe(false);
+    const same = { date: addDays(today, 2), timeSlot: "evening" };
+    expect(offer({ proposedVisits: [same, same] }).success).toBe(false);
+    const four = [1, 2, 3, 4].map((d) => ({ date: addDays(today, d), timeSlot: "morning" }));
+    expect(offer({ proposedVisits: four }).success).toBe(false);
+    expect(offer({ inspectionFeeLkr: "1500.50" }).success).toBe(false);
+  });
+
+  it("requires a timeline and a validity period for online quotations", () => {
+    const quote = (o: Record<string, unknown>) =>
+      submitRemoteQuotationSchema.safeParse({
+        requestId: "r1",
+        submissionKey: "0f8fad5b-d9cb-469f-a165-70867728950e",
+        lineItems: [{ kind: "labour", description: "Paint living room", quantity: 1, unitPriceLkr: 25000 }],
+        estimatedDurationHours: "16",
+        exclusions: "Ceiling",
+        assumptions: "Walls are sound",
+        notes: "",
+        validForDays: "7",
+        ...o,
+      });
+    expect(quote({}).success).toBe(true);
+    expect(quote({ estimatedDurationHours: "" }).success).toBe(false);
+    expect(quote({ validForDays: "0" }).success).toBe(false);
+    expect(quote({ validForDays: "31" }).success).toBe(false);
+  });
+
+  it("needs a reason to ask for a revision or reject, not to approve", () => {
+    const decide = (decision: string, reason: string) => decideQuotationSchema.safeParse({ quotationId: "q1", decision, reason }).success;
+    expect(decide("approve", "")).toBe(true);
+    expect(decide("request_revision", "")).toBe(false);
+    expect(decide("request_revision", "Use cheaper tiles")).toBe(true);
+    expect(decide("reject", "")).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Hammer, MapPinCheck, Navigation, ThumbsDown, ThumbsUp, XCircle } from "lucide-react";
+import { CheckCircle2, Hammer, MapPinCheck, Navigation, PencilLine, ThumbsDown, ThumbsUp, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -29,7 +29,7 @@ import { QuotationForm } from "./quotation-form";
 const stepButtons: Record<BookingStep, { label: string; icon: typeof Navigation }> = {
   confirm_visit: { label: "Confirm visit", icon: CheckCircle2 },
   start_travel: { label: "I'm on my way", icon: Navigation },
-  arrive: { label: "I've arrived — start inspection", icon: MapPinCheck },
+  arrive: { label: "I've arrived", icon: MapPinCheck },
   start_work: { label: "Start work", icon: Hammer },
   complete_work: { label: "Mark job completed", icon: CheckCircle2 },
 };
@@ -43,7 +43,7 @@ export function BookingActions({ booking, audience }: { booking: BookingView; au
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [rejecting, setRejecting] = useState(false);
+  const [deciding, setDeciding] = useState<"request_revision" | "reject" | null>(null);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
   const { allowed } = booking;
@@ -65,7 +65,7 @@ export function BookingActions({ booking, audience }: { booking: BookingView; au
         router.refresh();
         return;
       }
-      setRejecting(false);
+      setDeciding(null);
       router.refresh();
     });
   }
@@ -100,46 +100,64 @@ export function BookingActions({ booking, audience }: { booking: BookingView; au
 
       {allowed.decideQuotationId ? (
         <div className="rounded-lg border border-urgent/30 bg-urgent-soft p-4">
-          <p className="font-semibold text-foreground">Approve this quotation?</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Approving confirms the job at {formatLkr(booking.quotations[0]?.totalLkr ?? 0)}. The technician starts
-            work only after you approve.
+          <p className="font-semibold text-foreground">
+            {allowed.quotationIsPriceChange ? "Approve the revised price?" : "Approve this quotation?"}
           </p>
-          {rejecting ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            Approving confirms the job at {formatLkr(booking.quotations[0]?.totalLkr ?? 0)}.{" "}
+            {allowed.quotationIsPriceChange
+              ? "Until you approve, the technician may not do the extra work; your earlier approved quotation stays on record."
+              : "The technician starts paid work only after you approve."}
+          </p>
+          {deciding ? (
             <div className="mt-4 space-y-3">
               <Field data-invalid={Boolean(reasonError)}>
-                <FieldLabel htmlFor="reject-reason">Why are you rejecting it?</FieldLabel>
+                <FieldLabel htmlFor="decision-reason">
+                  {deciding === "request_revision" ? "What should the technician change?" : "Why are you rejecting it?"}
+                </FieldLabel>
                 <Textarea
-                  id="reject-reason"
+                  id="decision-reason"
                   rows={3}
                   maxLength={500}
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   aria-invalid={Boolean(reasonError)}
-                  placeholder="e.g. The materials cost seems high — can you use a local brand?"
+                  placeholder={
+                    deciding === "request_revision"
+                      ? "e.g. Can you use a local brand of pipe to bring the materials cost down?"
+                      : "e.g. The price is more than I can spend right now."
+                  }
                 />
                 {reasonError ? <FieldError>{reasonError}</FieldError> : null}
               </Field>
+              {deciding === "reject" ? (
+                <p className="text-sm text-muted-foreground">
+                  Rejecting cancels the job.
+                  {allowed.cancel?.inspectionFeeDue
+                    ? ` The agreed visit fee of ${formatLkr(booking.inspectionFeeLkr)} is still due because the technician has inspected.`
+                    : ""}
+                </p>
+              ) : null}
               <div className="flex flex-wrap gap-2">
                 <Button
-                  variant="destructive"
+                  variant={deciding === "reject" ? "destructive" : "default"}
                   size="lg"
                   disabled={pending}
                   onClick={() => {
                     setReasonError(null);
                     if (reason.trim().length < 5) {
-                      setReasonError("Tell the technician why, so they can send a revised quotation");
+                      setReasonError("Add a short reason (at least 5 characters)");
                       return;
                     }
-                    run("reject", () =>
-                      decideQuotationAction({ quotationId: allowed.decideQuotationId, decision: "reject", reason }),
+                    run(deciding, () =>
+                      decideQuotationAction({ quotationId: allowed.decideQuotationId, decision: deciding, reason }),
                     );
                   }}
                 >
-                  {busy === "reject" ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
-                  Reject quotation
+                  {busy === deciding ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
+                  {deciding === "request_revision" ? "Ask for a revision" : "Reject and cancel job"}
                 </Button>
-                <Button variant="ghost" size="lg" disabled={pending} onClick={() => setRejecting(false)}>
+                <Button variant="ghost" size="lg" disabled={pending} onClick={() => setDeciding(null)}>
                   Back
                 </Button>
               </div>
@@ -160,9 +178,13 @@ export function BookingActions({ booking, audience }: { booking: BookingView; au
                 ) : (
                   <ThumbsUp data-icon="inline-start" aria-hidden="true" />
                 )}
-                Approve and confirm job
+                Approve and confirm
               </Button>
-              <Button variant="outline" size="lg" disabled={pending} onClick={() => setRejecting(true)}>
+              <Button variant="outline" size="lg" disabled={pending} onClick={() => setDeciding("request_revision")}>
+                <PencilLine data-icon="inline-start" aria-hidden="true" />
+                Request a revision
+              </Button>
+              <Button variant="ghost" size="lg" className="text-destructive hover:text-destructive" disabled={pending} onClick={() => setDeciding("reject")}>
                 <ThumbsDown data-icon="inline-start" aria-hidden="true" />
                 Reject
               </Button>
@@ -174,14 +196,25 @@ export function BookingActions({ booking, audience }: { booking: BookingView; au
       {allowed.submitQuotation && audience === "technician" ? (
         <div className="rounded-lg border p-4">
           <p className="font-semibold text-foreground">
-            {booking.status === "quote_rejected" ? "Send a revised quotation" : "Inspection findings and quotation"}
+            {allowed.quotationIsPriceChange
+              ? "Scope or price changed? Send a revised quotation"
+              : booking.status === "quote_rejected"
+                ? "Send a revised quotation"
+                : "Inspection findings and quotation"}
           </p>
           <p className="mt-1 mb-4 text-sm text-muted-foreground">
-            Itemize labour, materials and any additional charges. The agreed inspection fee
-            {booking.inspectionFeeLkr > 0 ? ` (${formatLkr(booking.inspectionFeeLkr)})` : ""} is added automatically.
-            Don&apos;t start repairs until the customer approves.
+            {allowed.quotationIsPriceChange
+              ? "The accepted quotation stays on record. Explain what's different on site and itemize the full revised price; the customer must approve it before you do any extra paid work."
+              : "Itemize labour, materials and any additional charges. Don't start repairs until the customer approves."}
+            {booking.inspectionFeeLkr > 0
+              ? ` The agreed visit fee (${formatLkr(booking.inspectionFeeLkr)}) is added automatically.`
+              : ""}
           </p>
-          <QuotationForm bookingId={booking.id} inspectionFeeLkr={booking.inspectionFeeLkr} />
+          <QuotationForm
+            bookingId={booking.id}
+            inspectionFeeLkr={booking.inspectionFeeLkr}
+            priceChange={allowed.quotationIsPriceChange}
+          />
         </div>
       ) : null}
 

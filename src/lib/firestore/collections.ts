@@ -19,6 +19,8 @@ export const collections = {
   conversations: "conversations",
   reviews: "reviews",
   notifications: "notifications",
+  /** payments/{bookingId} — amount owed per job; collection arrives in Phase 9. */
+  payments: "payments",
 } as const;
 
 /** Fixed document ids inside subcollections. */

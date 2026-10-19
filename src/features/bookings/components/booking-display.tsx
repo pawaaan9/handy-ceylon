@@ -4,8 +4,16 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDate, formatLkr, formatLocalMobile, initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { bookingStatusLabels, quotationLineKindLabels, type BookingStatus, type QuotationStatus } from "../types";
+import {
+  bookingStatusLabels,
+  quotationLineKindLabels,
+  quotationStatusLabels,
+  type BookingMode,
+  type BookingStatus,
+} from "../types";
 import type { QuotationView, TechnicianPublicView } from "../views";
+
+export { formatVisitSlot } from "./visit-slot";
 
 const statusTones: Partial<Record<BookingStatus, string>> = {
   awaiting_customer_approval: "bg-urgent-soft text-urgent",
@@ -30,24 +38,52 @@ export function BookingStatusBadge({ status, className }: { status: BookingStatu
   );
 }
 
-const progress: { label: string; statuses: BookingStatus[] }[] = [
-  { label: "Technician assigned", statuses: ["technician_assigned"] },
-  { label: "Visit confirmed", statuses: ["visit_scheduled"] },
-  { label: "On the way", statuses: ["en_route"] },
-  { label: "Inspection", statuses: ["inspecting"] },
-  { label: "Quotation", statuses: ["awaiting_customer_approval", "quote_rejected"] },
-  { label: "Job confirmed", statuses: ["confirmed"] },
-  { label: "Work in progress", statuses: ["work_in_progress"] },
-  { label: "Completed", statuses: ["completed"] },
-];
+type Stage = { label: string; statuses: BookingStatus[] };
+const stages: Record<BookingMode, Stage[]> = {
+  urgent: [
+    { label: "Technician assigned", statuses: ["technician_assigned"] },
+    { label: "Visit confirmed", statuses: ["visit_scheduled"] },
+    { label: "On the way", statuses: ["en_route"] },
+    { label: "Inspection", statuses: ["inspecting"] },
+    { label: "Quotation", statuses: ["awaiting_customer_approval", "quote_rejected"] },
+    { label: "Job confirmed", statuses: ["confirmed"] },
+    { label: "Work in progress", statuses: ["work_in_progress"] },
+    { label: "Completed", statuses: ["completed"] },
+  ],
+  quote_visit: [
+    { label: "Visit booked", statuses: ["visit_scheduled"] },
+    { label: "On the way", statuses: ["en_route"] },
+    { label: "Inspection", statuses: ["inspecting"] },
+    { label: "Final quotation", statuses: ["awaiting_customer_approval", "quote_rejected"] },
+    { label: "Job confirmed", statuses: ["confirmed"] },
+    { label: "Work in progress", statuses: ["work_in_progress"] },
+    { label: "Completed", statuses: ["completed"] },
+  ],
+  quote_online: [
+    { label: "Quotation selected", statuses: ["confirmed"] },
+    { label: "On the way", statuses: ["en_route"] },
+    { label: "On site", statuses: ["inspecting", "awaiting_customer_approval", "quote_rejected"] },
+    { label: "Work in progress", statuses: ["work_in_progress"] },
+    { label: "Completed", statuses: ["completed"] },
+  ],
+};
 
-/** Where the job is in the Get Help Now lifecycle. */
-export function BookingProgress({ status, cancelledFrom }: { status: BookingStatus; cancelledFrom?: BookingStatus }) {
+/** Where the job is in its option's lifecycle. */
+export function BookingProgress({
+  mode,
+  status,
+  cancelledFrom,
+}: {
+  mode: BookingMode;
+  status: BookingStatus;
+  cancelledFrom?: BookingStatus;
+}) {
+  const list = stages[mode];
   const effective = status === "cancelled" ? cancelledFrom : status;
-  const currentIndex = progress.findIndex((p) => effective && p.statuses.includes(effective));
+  const currentIndex = list.findIndex((p) => effective && p.statuses.includes(effective));
   return (
-    <ol className="grid gap-2 sm:grid-cols-4 lg:grid-cols-8" aria-label="Job progress">
-      {progress.map((p, i) => {
+    <ol className={cn("grid gap-2 sm:grid-cols-4", list.length > 6 ? "lg:grid-cols-8" : "lg:grid-cols-5")} aria-label="Job progress">
+      {list.map((p, i) => {
         const done = status === "completed" || i < currentIndex;
         const current = i === currentIndex && status !== "completed";
         return (
@@ -71,11 +107,11 @@ export function BookingProgress({ status, cancelledFrom }: { status: BookingStat
   );
 }
 
-/** The verified technician, as the customer sees them. */
-export function TechnicianCard({ technician }: { technician: TechnicianPublicView }) {
+/** A verified technician's profile, as customers see it when comparing or booking. */
+export function TechnicianCard({ technician, compact }: { technician: TechnicianPublicView; compact?: boolean }) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-      <Avatar className="size-16 border">
+      <Avatar className={cn("border", compact ? "size-12" : "size-16")}>
         {technician.photoURL ? <AvatarImage src={technician.photoURL} alt="" className="object-cover" /> : null}
         <AvatarFallback className="bg-brand-soft text-lg font-semibold text-primary">
           {initials(technician.displayName)}
@@ -120,7 +156,7 @@ export function TechnicianCard({ technician }: { technician: TechnicianPublicVie
             </a>
           ) : null}
         </div>
-        {technician.skills.length > 0 ? (
+        {!compact && technician.skills.length > 0 ? (
           <ul className="flex flex-wrap gap-1.5" aria-label="Skills">
             {technician.skills.slice(0, 8).map((skill) => (
               <li key={skill} className="rounded-full bg-brand-soft px-2.5 py-1 text-xs font-medium text-primary">
@@ -129,7 +165,7 @@ export function TechnicianCard({ technician }: { technician: TechnicianPublicVie
             ))}
           </ul>
         ) : null}
-        {technician.approvedAt ? (
+        {!compact && technician.approvedAt ? (
           <p className="text-xs text-muted-foreground">Verified since {formatDate(technician.approvedAt)}</p>
         ) : null}
       </div>
@@ -137,34 +173,66 @@ export function TechnicianCard({ technician }: { technician: TechnicianPublicVie
   );
 }
 
-const quotationStatusLabels: Record<QuotationStatus, string> = {
-  submitted: "Awaiting your decision",
-  accepted: "Approved",
-  rejected: "Rejected",
-  withdrawn: "Withdrawn",
-  superseded: "Replaced",
-  expired: "Expired",
-};
+function quotationTitle(q: QuotationView): string {
+  if (q.revisionOfQuotationId) return `Revised quotation (v${q.version})`;
+  if (q.mode === "quote_online") return q.version > 1 ? `Online quotation (v${q.version})` : "Online quotation";
+  return q.version > 1 ? `Quotation (revision ${q.version - 1})` : "Quotation";
+}
 
-/** Itemized quotation with server-computed totals. */
-export function QuotationCard({ quotation, audience }: { quotation: QuotationView; audience: "customer" | "technician" }) {
-  const status =
-    audience === "technician" && quotation.status === "submitted" ? "Waiting for the customer" : quotationStatusLabels[quotation.status];
+/**
+ * Itemized quotation with server-computed totals. The visit/inspection fee
+ * is shown apart from repair charges; a price change shows its reason and
+ * exactly what changed from the accepted quotation.
+ */
+export function QuotationCard({ quotation: q, audience }: { quotation: QuotationView; audience: "customer" | "technician" }) {
+  const status = audience === "technician" && q.status === "submitted" ? "Waiting for the customer" : quotationStatusLabels[q.status];
+  const repairLkr = q.labourLkr + q.materialsLkr + q.additionalLkr;
   return (
-    <article className="rounded-lg border" aria-label={`Quotation version ${quotation.version}`}>
+    <article className="rounded-lg border" aria-label={quotationTitle(q)}>
       <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-        <h3 className="font-semibold text-foreground">
-          Quotation{quotation.version > 1 ? ` (revision ${quotation.version - 1})` : ""}
-        </h3>
+        <h3 className="font-semibold text-foreground">{quotationTitle(q)}</h3>
         <span className="text-sm text-muted-foreground">
-          {status} · {formatDate(quotation.createdAt)}
+          {status} · {formatDate(q.createdAt)}
+          {q.status === "submitted" ? ` · valid until ${formatDate(q.validUntil)}` : ""}
         </span>
       </header>
       <div className="space-y-4 p-4 text-sm">
-        <div>
-          <p className="font-medium text-foreground">Inspection findings</p>
-          <p className="mt-1 break-words whitespace-pre-line text-muted-foreground">{quotation.inspectionFindings}</p>
-        </div>
+        {q.revisionReason ? (
+          <div className="rounded-md border border-urgent/30 bg-urgent-soft px-3 py-2">
+            <p className="font-medium text-foreground">Why the price changed</p>
+            <p className="mt-0.5 break-words whitespace-pre-line text-foreground">{q.revisionReason}</p>
+          </div>
+        ) : null}
+        {q.differences ? (
+          <div>
+            <p className="font-medium text-foreground">
+              Change from the accepted quotation:{" "}
+              <span className={q.differences.totalChangeLkr > 0 ? "text-urgent" : "text-success"}>
+                {q.differences.totalChangeLkr >= 0 ? "+" : "−"}
+                {formatLkr(Math.abs(q.differences.totalChangeLkr))}
+              </span>
+            </p>
+            <ul className="mt-1 space-y-0.5 text-muted-foreground">
+              {q.differences.added.map((l, i) => (
+                <li key={`a${i}`}>Added: {l.description} ({formatLkr(l.amountLkr)})</li>
+              ))}
+              {q.differences.removed.map((l, i) => (
+                <li key={`r${i}`}>Removed: {l.description} ({formatLkr(l.amountLkr)})</li>
+              ))}
+              {q.differences.changed.map((l, i) => (
+                <li key={`c${i}`}>
+                  Changed: {l.description} ({formatLkr(l.beforeLkr)} → {formatLkr(l.afterLkr)})
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {q.inspectionFindings ? (
+          <div>
+            <p className="font-medium text-foreground">{q.mode === "quote_online" ? "On-site findings" : "Inspection findings"}</p>
+            <p className="mt-1 break-words whitespace-pre-line text-muted-foreground">{q.inspectionFindings}</p>
+          </div>
+        ) : null}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[28rem] text-left">
             <caption className="sr-only">Quotation items</caption>
@@ -178,7 +246,7 @@ export function QuotationCard({ quotation, audience }: { quotation: QuotationVie
               </tr>
             </thead>
             <tbody>
-              {quotation.lineItems.map((line, i) => (
+              {q.lineItems.map((line, i) => (
                 <tr key={i} className="border-b last:border-0">
                   <td className="py-2 pr-3 text-foreground">{line.description}</td>
                   <td className="py-2 pr-3 text-muted-foreground">{quotationLineKindLabels[line.kind]}</td>
@@ -191,26 +259,46 @@ export function QuotationCard({ quotation, audience }: { quotation: QuotationVie
           </table>
         </div>
         <dl className="ml-auto max-w-xs space-y-1.5">
-          <TotalRow label="Labour" value={quotation.labourLkr} />
-          <TotalRow label="Materials" value={quotation.materialsLkr} />
-          <TotalRow label="Additional charges" value={quotation.additionalLkr} />
-          <TotalRow label="Inspection fee (agreed)" value={quotation.inspectionFeeLkr} />
+          <TotalRow label="Labour" value={q.labourLkr} />
+          <TotalRow label="Materials" value={q.materialsLkr} />
+          <TotalRow label="Additional charges" value={q.additionalLkr} />
+          <div className="flex justify-between border-t pt-1.5 font-medium text-foreground">
+            <dt>Repair charges</dt>
+            <dd className="tabular-nums">{formatLkr(repairLkr)}</dd>
+          </div>
+          {q.mode !== "quote_online" ? (
+            <TotalRow label={q.mode === "urgent" ? "Inspection fee (agreed)" : "Visit fee (agreed)"} value={q.inspectionFeeLkr} />
+          ) : null}
           <div className="flex justify-between border-t pt-2 text-base font-semibold text-foreground">
             <dt>Total price</dt>
-            <dd className="tabular-nums">{formatLkr(quotation.totalLkr)}</dd>
+            <dd className="tabular-nums">{formatLkr(q.totalLkr)}</dd>
           </div>
         </dl>
-        {quotation.estimatedDurationHours ? (
-          <p className="text-muted-foreground">Estimated time: about {quotation.estimatedDurationHours} hours</p>
-        ) : null}
-        {quotation.notes ? <p className="break-words whitespace-pre-line text-muted-foreground">{quotation.notes}</p> : null}
-        {quotation.rejectionReason ? (
+        <dl className="grid gap-3 sm:grid-cols-2">
+          {q.estimatedDurationHours ? <Detail label="Estimated time" value={`About ${q.estimatedDurationHours} hours`} /> : null}
+          {q.exclusions ? <Detail label="Not included" value={q.exclusions} /> : null}
+          {q.assumptions ? <Detail label="Based on" value={q.assumptions} /> : null}
+          {q.notes ? <Detail label="Notes" value={q.notes} /> : null}
+        </dl>
+        {q.decisionReason ? (
           <p className="rounded-md bg-sand/50 px-3 py-2 text-foreground">
-            <span className="font-medium">Customer&apos;s reason for rejecting:</span> {quotation.rejectionReason}
+            <span className="font-medium">
+              {q.status === "revision_requested" ? "Customer asked for a revision:" : "Customer's reason:"}
+            </span>{" "}
+            {q.decisionReason}
           </p>
         ) : null}
       </div>
     </article>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 break-words whitespace-pre-line text-foreground">{value}</dd>
+    </div>
   );
 }
 
@@ -223,38 +311,39 @@ function TotalRow({ label, value }: { label: string; value: number }) {
   );
 }
 
-const nextSteps: Record<BookingStatus, { customer: string; technician: string }> = {
+type Audience = "customer" | "technician";
+const nextSteps: Record<BookingStatus, Record<Audience, string>> = {
   technician_assigned: {
     customer: "Check the inspection fee and arrival time below, then confirm the visit.",
     technician: "Waiting for the customer to confirm the visit and your inspection fee. Don't travel yet.",
   },
   visit_scheduled: {
-    customer: "Your technician will set off shortly. Keep your phone nearby.",
-    technician: "The customer confirmed. Tap “I'm on my way” when you leave.",
+    customer: "Your technician will come at the agreed time. Keep your phone nearby.",
+    technician: "The visit is confirmed. Tap “I'm on my way” when you leave.",
   },
   en_route: {
     customer: "Your technician is on the way.",
-    technician: "Tap “I've arrived” when you reach the address to start the inspection.",
+    technician: "Tap “I've arrived” when you reach the address.",
   },
   inspecting: {
     customer: "The technician is inspecting. You'll receive an itemized quotation to approve before any repair starts.",
-    technician: "Inspect the problem, then send your findings with an itemized quotation. Don't start repairs yet.",
+    technician: "Inspect the job, then send your findings with an itemized quotation. Don't start repairs yet.",
   },
   awaiting_customer_approval: {
-    customer: "Review the quotation. Work starts only after you approve it.",
-    technician: "Waiting for the customer to approve your quotation. Don't start work until they do.",
+    customer: "Review the quotation. Paid work starts only after you approve it.",
+    technician: "Waiting for the customer to approve your quotation. Don't start paid work until they do.",
   },
   quote_rejected: {
-    customer: "You rejected the quotation. The technician can send a revised one, or either of you can cancel.",
-    technician: "The customer rejected the quotation. Send a revised quotation, or cancel if you can't agree.",
+    customer: "You asked for a revision. The technician can send a new quotation, or either of you can cancel.",
+    technician: "The customer asked for a revision. Send a revised quotation, or cancel if you can't agree.",
   },
   confirmed: {
     customer: "The job is confirmed at the agreed price. Your technician will start the work.",
-    technician: "The customer approved the quotation. You can start the work now.",
+    technician: "The customer approved the price. You can start the work.",
   },
   work_in_progress: {
-    customer: "Work is under way. Your technician will mark it complete when done.",
-    technician: "Mark the job completed when the work is finished.",
+    customer: "Work is under way. Any price change needs your approval before extra work.",
+    technician: "Mark the job completed when finished. If the scope changes, send a revised quotation first.",
   },
   completed: {
     customer: "The job is complete. Pay the agreed amount directly to your technician.",
@@ -263,11 +352,25 @@ const nextSteps: Record<BookingStatus, { customer: string; technician: string }>
   cancelled: { customer: "This job was cancelled.", technician: "This job was cancelled." },
 };
 
-export function NextSteps({ status, audience }: { status: BookingStatus; audience: "customer" | "technician" }) {
+/** Quote Online differs before work: the price is already agreed, and the site may change it. */
+const onlineSteps: Partial<Record<BookingStatus, Record<Audience, string>>> = {
+  confirmed: {
+    customer: "You selected this quotation. The technician will arrange the visit with you to do the work.",
+    technician: "The customer selected your quotation. Arrange the visit, then tap “I'm on my way”.",
+  },
+  inspecting: {
+    customer: "The technician is checking the site against the quoted scope. Any price change needs your approval.",
+    technician:
+      "Check the site matches the quoted scope. Start work if it does; if not, send a revised quotation with the reason before doing extra work.",
+  },
+};
+
+export function NextSteps({ status, audience, mode }: { status: BookingStatus; audience: Audience; mode: BookingMode }) {
+  const text = (mode === "quote_online" ? onlineSteps[status]?.[audience] : undefined) ?? nextSteps[status][audience];
   return (
     <p className="rounded-lg bg-sand/50 px-4 py-3 text-sm text-foreground">
       <span className="font-semibold">Next: </span>
-      {nextSteps[status][audience]}
+      {text}
     </p>
   );
 }
