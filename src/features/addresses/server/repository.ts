@@ -2,6 +2,7 @@ import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
 
+import { finishedBookingStatuses } from "@/features/bookings/types";
 import { adminDb } from "@/lib/firebase/admin";
 import { collections, subcollections } from "@/lib/firestore/collections";
 import type { AddressDoc, AddressSnapshot } from "@/lib/firestore/models";
@@ -128,7 +129,7 @@ export async function setDefaultAddress(uid: string, addressId: string): Promise
 }
 
 /** Booking statuses after which a request no longer needs its address. */
-const FINISHED_BOOKING_STATUSES = new Set(["completed", "closed_without_work", "cancelled"]);
+const FINISHED_BOOKING_STATUSES = new Set<string>(finishedBookingStatuses);
 
 /**
  * True while an open request, or a booking that hasn't finished, uses this

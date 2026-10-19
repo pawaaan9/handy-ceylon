@@ -80,21 +80,22 @@ export const cancellationReasons = [
 ] as const;
 export type CancellationReason = (typeof cancellationReasons)[number];
 
-export const cancellationReasonLabels: Record<CancellationReason, string> = {
+export const cancellationReasonLabels: Record<CancellationReason | "booking_cancelled", string> = {
   no_longer_needed: "I no longer need this",
   found_someone_else: "I found someone else",
   wrong_details: "I entered the wrong details",
   other: "Another reason",
+  booking_cancelled: "The job was cancelled",
 };
 
 export const requestStatusLabels: Record<ServiceRequestStatus, string> = {
-  open: "Open",
+  open: "Waiting for a technician",
   assigned: "Technician assigned",
   cancelled: "Cancelled",
   expired: "Expired",
 };
 
-/** Open requests stop collecting responses after this long (enforced in a later phase). */
+/** Open requests stop accepting technicians after this long (checked whenever they're read or accepted). */
 export const requestLifetimeHours: Record<BookingMode, number> = {
   urgent: 24,
   quote_visit: 7 * 24,

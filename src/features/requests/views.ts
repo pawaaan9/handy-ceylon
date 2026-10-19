@@ -1,4 +1,4 @@
-import type { BookingMode, ServiceRequestStatus } from "@/features/bookings/types";
+import type { BookingMode, BookingStatus, ServiceRequestStatus } from "@/features/bookings/types";
 import type { UserRole } from "@/features/auth/roles";
 import type { AddressSnapshot, RequestAttachment } from "@/lib/firestore/models";
 
@@ -17,6 +17,8 @@ export type RequestSummaryView = {
   urgency: Urgency;
   preferredSchedule: PreferredSchedule;
   attachmentCount: number;
+  bookingId: string | null;
+  bookingStatus: BookingStatus | null;
   createdAt: string;
 };
 
@@ -28,8 +30,9 @@ export type RequestDetailView = RequestSummaryView & {
   address: AddressSnapshot | null;
   accessInstructions: string | null;
   attachments: (RequestAttachment & { url: string | null })[];
-  cancellation: { by: string; reason: CancellationReason; note: string | null; at: string } | null;
+  cancellation: { by: string; reason: CancellationReason | "booking_cancelled"; note: string | null; at: string } | null;
   history: { from: ServiceRequestStatus | null; to: ServiceRequestStatus; actorRole: UserRole | "system"; note: string | null; at: string }[];
   expiresAt: string;
+  selectedTechnicianId: string | null;
   canCancel: boolean;
 };

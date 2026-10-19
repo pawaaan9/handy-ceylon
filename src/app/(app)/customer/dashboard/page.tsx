@@ -11,6 +11,7 @@ import { addressLines } from "@/features/addresses/format";
 import { getDefaultAddress } from "@/features/addresses/server/repository";
 import { technicianRoutes } from "@/features/auth/redirects";
 import { getApplicationStatus, requireRole } from "@/features/auth/server/dal";
+import { BookingStatusBadge } from "@/features/bookings/components/booking-display";
 import { RequestStatusBadge } from "@/features/requests/components/request-status-badge";
 import { listCustomerRequests } from "@/features/requests/server/repository";
 import { requestTypeLabel } from "@/features/requests/types";
@@ -123,7 +124,7 @@ async function CustomerDashboardPageContent() {
                         {requestTypeLabel(r.mode)} · {formatDate(r.createdAt)}
                       </span>
                     </span>
-                    <RequestStatusBadge status={r.status} />
+                    {r.bookingStatus ? <BookingStatusBadge status={r.bookingStatus} /> : <RequestStatusBadge status={r.status} />}
                   </Link>
                 </li>
               ))}

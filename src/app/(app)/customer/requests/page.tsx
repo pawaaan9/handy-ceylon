@@ -7,6 +7,7 @@ import { PageHeader, PageSkeleton } from "@/components/app-shell/page-header";
 import { FormAlert } from "@/components/forms/form-alert";
 import { Button } from "@/components/ui/button";
 import { requireRole } from "@/features/auth/server/dal";
+import { BookingStatusBadge } from "@/features/bookings/components/booking-display";
 import { RequestStatusBadge } from "@/features/requests/components/request-status-badge";
 import { formatSchedule } from "@/features/requests/format";
 import { listCustomerRequests } from "@/features/requests/server/repository";
@@ -81,7 +82,7 @@ async function RequestsPageContent() {
                       {r.categoryName} · {r.serviceName}
                     </p>
                   </div>
-                  <RequestStatusBadge status={r.status} />
+                  {r.bookingStatus ? <BookingStatusBadge status={r.bookingStatus} /> : <RequestStatusBadge status={r.status} />}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
                   <span className="inline-flex items-center gap-1.5">

@@ -26,6 +26,8 @@ export const technicianRoutes = {
 export const areaAccess: readonly { prefix: string; roles: readonly UserRole[] }[] = [
   { prefix: "/customer", roles: ["customer"] },
   { prefix: "/technician/dashboard", roles: ["technician"] },
+  { prefix: "/technician/requests", roles: ["technician"] },
+  { prefix: "/technician/jobs", roles: ["technician"] },
   { prefix: "/admin", roles: ["admin"] },
 ];
 

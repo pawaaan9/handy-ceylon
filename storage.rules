@@ -66,11 +66,17 @@ service firebase.storage {
       allow update: if false;
     }
 
-    // Attachments of a submitted request: written only by the server.
+    function requestOf(requestId) {
+      return firestore.get(/databases/(default)/documents/serviceRequests/$(requestId)).data;
+    }
+
+    // Attachments of a submitted request: written only by the server. Readable
+    // by the customer and by the technician currently assigned to it.
     match /serviceRequests/{requestId}/media/{fileName} {
       allow read: if isAdmin()
         || (isSignedIn()
-          && firestore.get(/databases/(default)/documents/serviceRequests/$(requestId)).data.customerId == request.auth.uid);
+          && (requestOf(requestId).customerId == request.auth.uid
+            || requestOf(requestId).selectedTechnicianId == request.auth.uid));
       allow write: if false;
     }
 

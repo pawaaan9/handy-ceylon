@@ -102,3 +102,36 @@ export async function seedCatalogue() {
 export async function uploadAs(path: string, contentType: string, bytes: Buffer | Uint8Array = Buffer.from("test")) {
   await adminStorage().bucket().file(path).save(Buffer.from(bytes), { contentType, resumable: false });
 }
+
+/** An approved technician profile, written directly (no Auth account needed for repository tests). */
+export async function seedTechnician(uid: string, overrides: Record<string, unknown> = {}) {
+  const now = new Date();
+  await adminDb()
+    .doc(`technicians/${uid}`)
+    .set({
+      uid,
+      accountStatus: "active",
+      displayName: `Tech ${uid}`,
+      email: `${uid}@example.com`,
+      phoneNumber: "+94770000000",
+      photoURL: null,
+      photoPath: null,
+      bio: "Plumber",
+      categoryIds: ["plumbing"],
+      serviceDistricts: ["Kandy"],
+      skills: ["PPR pipes"],
+      yearsOfExperience: 8,
+      district: "Kandy",
+      city: "Kandy",
+      availability: "online",
+      verificationStatus: "approved",
+      ratingAverage: 0,
+      ratingCount: 0,
+      completedJobs: 0,
+      approvedAt: now,
+      approvedBy: "admin",
+      createdAt: now,
+      updatedAt: now,
+      ...overrides,
+    });
+}

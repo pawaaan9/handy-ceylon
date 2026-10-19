@@ -11,6 +11,8 @@ const protectedPrefixes = [
   "/customer",
   "/technician/dashboard",
   "/technician/application",
+  "/technician/requests",
+  "/technician/jobs",
   "/admin",
   "/verify-email",
   "/complete-profile",

@@ -170,9 +170,9 @@ describe("ownership", () => {
     expect(view.cancellation).toMatchObject({ by: "customer", reason: "found_someone_else", note: "Neighbour fixed it" });
     expect(view.history.map((e) => e.to)).toEqual(["open", "cancelled"]);
     expect(view.canCancel).toBe(false);
-    await expect(
-      cancelServiceRequest(alice.uid, { requestId: id, reason: "other", note: null }),
-    ).rejects.toThrow(/no longer be cancelled/);
+    // A retried cancellation is a no-op, not a second event.
+    await cancelServiceRequest(alice.uid, { requestId: id, reason: "other", note: null });
+    expect((await getCustomerRequest(alice.uid, id))!.history.length).toBe(2);
     // A cancelled request no longer protects its address.
     await expect(deleteAddress(alice.uid, alice.addressId)).resolves.toBeUndefined();
   });

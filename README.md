@@ -9,8 +9,10 @@ Tailwind CSS 4 · shadcn/ui (Radix) · Lucide · Zod · React Hook Form · Fireb
 Firestore, Storage · Firebase Admin SDK.
 
 **Status:** foundation, landing page, authentication & user management, service catalogue, saved
-addresses and **customer service requests** (Phase 4) are complete. Technician matching, offers and
-quotations come next: submitted requests stay `open` until those phases land.
+addresses, customer service requests (Phase 4) and the **Get Help Now** workflow (Phase 5) are
+complete. The two Get a Quote workflows (technician offers, remote quotations) come next: those
+requests are saved and stay `open` until then. Payments are settled directly between customer and
+technician for now.
 
 ## Features
 
@@ -22,6 +24,10 @@ quotations come next: submitted requests stay `open` until those phases land.
 - **Technician applications** with document uploads; admins approve/reject; approval creates the technician account.
 - **Service catalogue** in Firestore with search, category filters, subcategories and active/inactive control.
 - **Saved addresses** with a default address, full validation and ownership enforced on the server.
+- **Get Help Now**: online technicians covering the category and district see urgent requests and accept
+  or decline; the first acceptance wins. The customer sees the verified technician, inspection fee and
+  ETA, confirms the visit, follows the job, and approves or rejects an itemized quotation (with
+  revisions). Work can only start after approval. Technicians toggle their availability.
 - **Service requests**: a multi-step form (service → address → details → photos/videos → review) for
   **Get Help Now**, **Get a Quote › Technician Visit** and **Get a Quote › Quote Online**, with draft
   saving, upload progress, duplicate-safe submission, a request list, a detail page and cancellation.
@@ -92,7 +98,10 @@ Never prefix Admin credentials with `NEXT_PUBLIC_` or commit `.env.local` / serv
    ```
 7. Seed the catalogue: `npm run seed:catalogue`.
 8. Create the first administrator — see below.
-9. *Recommended:* in **Google Cloud Console → Cloud Storage → your bucket → Lifecycle**, add a rule
+9. Deploying `firestore.indexes.json` creates the indexes the technician request list
+   (`serviceRequests`: status, mode, district, createdAt) and the availability count
+   (`technicians`: availability, verificationStatus, categoryIds) need. Wait until they finish building.
+10. *Recommended:* in **Google Cloud Console → Cloud Storage → your bucket → Lifecycle**, add a rule
    to delete objects with the prefix `requestMedia/` older than 7 days. This removes uploads from
    request drafts that were never submitted.
 
@@ -124,7 +133,9 @@ sign-in shows the emulator's test account picker.
 | `technicianApplications/{uid}` | Applications and review decisions |
 | `serviceCategories/{slug}`, `services/{id}` | Catalogue (active flags, subcategories) |
 | `phoneIndex/{E.164}` | One account per mobile number |
-| `serviceRequests/{id}` (+ `/private/details`, `/history/{id}`) | Customer service requests — see below |
+| `serviceRequests/{id}` (+ `/private/details`, `/history/{id}`, `/offers/{technicianId}`) | Customer service requests — see below |
+| `bookings/{id}` (+ `/statusHistory/{id}`) | One technician's job for one request — see Get Help Now |
+| `quotations/{id}` | Itemized quotations (versioned) |
 | `notifications/{uid}/items/{id}` | Notifications for any role |
 
 Security Rules: `firestore.rules` and `storage.rules`. Full field-level types: `src/lib/firestore/models.ts`.
@@ -147,13 +158,67 @@ Security Rules: `firestore.rules` and `storage.rules`. Full field-level types: `
 - **Attachments** (up to 6: photos ≤ 10 MB; up to 2 videos ≤ 50 MB / 60 s) upload to the customer's
   draft folder `requestMedia/{uid}/{submissionKey}/`. On submission the server re-reads each file's
   real type and size, then copies it to the server-owned `serviceRequests/{id}/media/` and deletes the draft.
-- Customers may have at most 10 open requests. `expiresAt` (24 h urgent, 7 days quotes) is recorded
-  now and enforced when matching is added.
+- Customers may have at most 10 open requests. `expiresAt` is 24 h for urgent requests and 7 days for
+  quotes. An overdue open request is marked `expired` (with a `system` history event) the next time it
+  is opened or a technician tries to accept it, and it is hidden from technicians immediately.
+
+### Get Help Now
+
+**Status model.** The request covers the time before a technician accepts; the booking covers the job.
+
+| Stage | Where | Status | Who moves it on |
+|---|---|---|---|
+| Submitted / awaiting technician | request | `open` | a technician accepts (first wins) · customer cancels · `expired` by the system |
+| Technician assigned | booking | `technician_assigned` | customer confirms the visit after seeing the inspection fee + ETA |
+| Visit scheduled | booking | `visit_scheduled` | technician: "I'm on my way" → `en_route` |
+| Inspecting | booking | `en_route` → `inspecting` | technician arrives, then sends findings + itemized quotation |
+| Awaiting customer approval | booking | `awaiting_customer_approval` | customer approves → `confirmed`, or rejects → `quote_rejected` |
+| Quote rejected | booking | `quote_rejected` | technician sends a revision (max 3 versions) · either side cancels |
+| Confirmed job | booking | `confirmed` | technician starts work → `work_in_progress` |
+| Completed | booking | `work_in_progress` → `completed` | technician |
+| Cancelled | booking (+ request) | `cancelled` | see below |
+
+The request mirrors the booking's status in `bookingStatus` for lists. Transitions live in
+`src/features/bookings/state-machine.ts`; clients only send named steps (`confirm_visit`,
+`start_travel`, `arrive`, `start_work`, `complete_work`), never a status.
+
+**Who may cancel when**
+
+| Booking status | Customer | Technician | Admin |
+|---|---|---|---|
+| assigned · visit scheduled · en route | ✓ | ✓ — request **reopens** for other technicians (or expires if overdue) | ✓ |
+| inspecting | ✓ fee due | ✓ fee waived | ✓ |
+| awaiting approval | ✓ fee due (quotation withdrawn) | — | ✓ |
+| quote rejected | ✓ fee due | ✓ fee due | ✓ |
+| confirmed | ✓ fee due | — | ✓ |
+| work in progress | — | — | ✓ |
+
+"Fee due" applies only when the agreed inspection fee is above 0; it is recorded on the booking's
+`cancellation`. Admin cancellations never set a fee. Every cancellation needs a reason.
+
+**Safety rules**
+
+- **One winner:** accepting runs in a Firestore transaction that re-reads the request. Concurrent
+  acceptances serialise; only the first sees `open`, the rest are told another technician accepted.
+- **Real availability:** a technician can accept only if their stored profile is `approved`, `active`,
+  `availability: "online"` and covers the request's category and district — checked inside the
+  transaction. Customers are shown the actual count of such technicians online, never an estimate.
+- **No unapproved work:** `work_in_progress` is reachable only from `confirmed`, which only the
+  customer can set by approving a quotation.
+- **Money:** whole LKR integers (`Lkr`). The inspection fee is set when accepting and shown before the
+  customer confirms the visit. Quotation totals (labour, materials, additional, inspection fee, total)
+  are computed on the server from the line items.
+- **Retries:** accepting again returns the same booking; a repeated step or decision is a no-op;
+  quotations use a per-submission key, so a retried submit can't add a version.
+- **Audit:** every request and booking change appends `{from, to, actorId, actorRole, note, at}` to
+  `history` / `statusHistory` with a server timestamp.
+- **Privacy:** technicians see only the area and description before accepting. The address snapshot,
+  access instructions, contact number and media are readable only by the assigned technician.
 
 ## Security model
 
 - The server decides roles from the role collections; the browser's claims are only used by Security Rules.
-- All account, address, application, catalogue and service-request writes go through Server Actions using the Admin SDK,
+- All account, address, application, catalogue, request, booking and quotation writes go through Server Actions using the Admin SDK,
   with Zod validation, session-derived user ids and state-machine checks. Rules deny direct client writes.
 - Verified email/phone values always come from Firebase Auth, never from form input.
 

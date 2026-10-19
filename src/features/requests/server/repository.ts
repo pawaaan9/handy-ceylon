@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
 import { snapshotAddress } from "@/features/addresses/server/repository";
+import { isPastDeadline } from "@/features/bookings/eligibility";
 import { serviceRequestTransitions } from "@/features/bookings/state-machine";
 import { getSelectableService } from "@/features/catalogue/server/repository";
 import { isOwnedPath } from "@/features/users/server/profile-photo";
@@ -17,7 +18,7 @@ import type {
   ServiceRequestPrivateDoc,
 } from "@/lib/firestore/models";
 import { UserFacingError } from "@/lib/errors";
-import { canTransition } from "@/lib/state-machine";
+import { assertTransition, canTransition } from "@/lib/state-machine";
 
 import {
   attachmentKind,
@@ -167,6 +168,7 @@ export async function createServiceRequest(
       selectedTechnicianId: null,
       acceptedQuotationId: null,
       bookingId: null,
+      bookingStatus: null,
       offerCount: 0,
       quotationCount: 0,
       cancellation: null,
@@ -201,10 +203,12 @@ export async function createServiceRequest(
 const iso = (t: unknown) => (t as Timestamp | null | undefined)?.toDate().toISOString() ?? new Date(0).toISOString();
 
 function toSummary(id: string, data: ServiceRequestDoc): RequestSummaryView {
+  // An open request past its deadline is shown as expired even before it's written back.
+  const status = data.status === "open" && isPastDeadline(data.expiresAt) ? "expired" : data.status;
   return {
     id,
     mode: data.mode,
-    status: data.status,
+    status,
     title: data.title,
     categoryName: data.catalogue.categoryName,
     serviceName: data.catalogue.serviceName,
@@ -213,6 +217,8 @@ function toSummary(id: string, data: ServiceRequestDoc): RequestSummaryView {
     urgency: data.urgency,
     preferredSchedule: data.preferredSchedule,
     attachmentCount: data.attachments.length,
+    bookingId: data.bookingId ?? null,
+    bookingStatus: data.bookingStatus ?? null,
     createdAt: iso(data.createdAt),
   };
 }
@@ -220,6 +226,32 @@ function toSummary(id: string, data: ServiceRequestDoc): RequestSummaryView {
 export async function listCustomerRequests(uid: string, limit = 50): Promise<RequestSummaryView[]> {
   const snap = await requestsRef().where("customerId", "==", uid).orderBy("createdAt", "desc").limit(limit).get();
   return snap.docs.map((d) => toSummary(d.id, d.data() as ServiceRequestDoc));
+}
+
+/**
+ * Closes an open request whose deadline has passed (status → expired, with an
+ * audit event). Safe to call repeatedly; returns true if it expired it now.
+ */
+export async function expireRequestIfDue(requestId: string): Promise<boolean> {
+  const ref = requestsRef().doc(requestId);
+  return adminDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return false;
+    const data = snap.data() as ServiceRequestDoc;
+    if (data.status !== "open" || !isPastDeadline(data.expiresAt)) return false;
+    assertTransition(serviceRequestTransitions, "open", "expired", "system");
+    const now = FieldValue.serverTimestamp();
+    tx.update(ref, { status: "expired", updatedAt: now });
+    tx.create(historyRef(requestId).doc(), {
+      from: "open",
+      to: "expired",
+      actorId: null,
+      actorRole: "system",
+      note: "No technician accepted before the deadline.",
+      at: now,
+    } satisfies Record<keyof ServiceRequestEventDoc, unknown>);
+    return true;
+  });
 }
 
 /** Short-lived links to private request media; null when links can't be signed (e.g. emulators). */
@@ -240,10 +272,24 @@ async function attachmentLinks(attachments: RequestAttachment[]) {
   );
 }
 
-/** Returns null for missing requests and for requests owned by anyone else. */
-export async function getCustomerRequest(uid: string, requestId: string): Promise<RequestDetailView | null> {
-  const snap = await requestsRef().doc(requestId).get();
-  if (!snap.exists || snap.get("customerId") !== uid) return null;
+export type RequestViewer = { uid: string; role: "customer" | "technician" };
+
+/**
+ * The full request, for its customer or its currently assigned technician.
+ * Returns null for anyone else, so other users can't tell it exists.
+ */
+export async function getRequestForViewer(viewer: RequestViewer, requestId: string): Promise<RequestDetailView | null> {
+  let snap = await requestsRef().doc(requestId).get();
+  if (!snap.exists) return null;
+  const allowed =
+    viewer.role === "customer"
+      ? snap.get("customerId") === viewer.uid
+      : snap.get("selectedTechnicianId") === viewer.uid;
+  if (!allowed) return null;
+  if (snap.get("status") === "open" && isPastDeadline(snap.get("expiresAt"))) {
+    await expireRequestIfDue(requestId);
+    snap = await requestsRef().doc(requestId).get();
+  }
   const data = snap.data() as ServiceRequestDoc;
 
   const [privateSnap, historySnap, attachments] = await Promise.all([
@@ -275,8 +321,15 @@ export async function getCustomerRequest(uid: string, requestId: string): Promis
       return { from: e.from, to: e.to, actorRole: e.actorRole, note: e.note, at: iso(e.at) };
     }),
     expiresAt: iso(data.expiresAt),
-    canCancel: canTransition(serviceRequestTransitions, data.status, "cancelled", "customer"),
+    selectedTechnicianId: data.selectedTechnicianId,
+    canCancel:
+      viewer.role === "customer" && canTransition(serviceRequestTransitions, data.status, "cancelled", "customer"),
   };
+}
+
+/** Returns null for missing requests and for requests owned by anyone else. */
+export function getCustomerRequest(uid: string, requestId: string): Promise<RequestDetailView | null> {
+  return getRequestForViewer({ uid, role: "customer" }, requestId);
 }
 
 /** Customer withdraws their own open request; the state machine decides if that's still allowed. */
@@ -287,6 +340,10 @@ export async function cancelServiceRequest(uid: string, input: CancelServiceRequ
     const snap = await tx.get(ref);
     if (!snap.exists || snap.get("customerId") !== uid) throw new UserFacingError(NOT_FOUND);
     const status = snap.get("status") as ServiceRequestDoc["status"];
+    if (status === "cancelled") return; // a retried cancellation
+    if (status === "assigned") {
+      throw new UserFacingError("A technician has already accepted this request. Cancel the job instead.");
+    }
     if (!canTransition(serviceRequestTransitions, status, "cancelled", "customer")) {
       throw new UserFacingError("This request can no longer be cancelled.");
     }

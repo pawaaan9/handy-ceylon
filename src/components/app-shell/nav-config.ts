@@ -13,6 +13,8 @@ export const navByRole: Record<UserRole, NavItem[]> = {
   ],
   technician: [
     { href: "/technician/dashboard", label: "Dashboard", icon: "dashboard" },
+    { href: "/technician/requests", label: "Urgent requests", icon: "requests" },
+    { href: "/technician/jobs", label: "My jobs", icon: "jobs" },
     { href: "/services", label: "Services", icon: "services" },
   ],
   admin: [

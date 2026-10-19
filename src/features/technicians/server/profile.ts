@@ -8,7 +8,13 @@ export async function getTechnicianProfile(
   uid: string,
 ): Promise<Pick<
   TechnicianDoc,
-  "categoryIds" | "serviceDistricts" | "verificationStatus" | "completedJobs" | "ratingAverage" | "ratingCount"
+  | "categoryIds"
+  | "serviceDistricts"
+  | "verificationStatus"
+  | "availability"
+  | "completedJobs"
+  | "ratingAverage"
+  | "ratingCount"
 > | null> {
   const snap = await adminDb().collection(collections.technicians).doc(uid).get();
   if (!snap.exists) return null;
@@ -17,6 +23,7 @@ export async function getTechnicianProfile(
     categoryIds: data.categoryIds,
     serviceDistricts: data.serviceDistricts,
     verificationStatus: data.verificationStatus,
+    availability: data.availability ?? "offline",
     completedJobs: data.completedJobs ?? 0,
     ratingAverage: data.ratingAverage ?? 0,
     ratingCount: data.ratingCount ?? 0,

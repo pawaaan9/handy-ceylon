@@ -4,6 +4,7 @@ import type {
   BookingMode,
   BookingStatus,
   OfferStatus,
+  QuotationLineKind,
   QuotationStatus,
   ServiceRequestStatus,
 } from "@/features/bookings/types";
@@ -26,7 +27,8 @@ import type { TechnicianApplicationStatus } from "@/features/technicians/types";
 /** Works for both the web SDK and Admin SDK Timestamp classes. */
 export type Timestamp = { toDate(): Date; toMillis(): number };
 export type District = (typeof sriLankaDistricts)[number];
-export type LkrCents = number;
+/** Whole Sri Lankan rupees, always an integer. */
+export type Lkr = number;
 
 export type GeoLocation = { lat: number; lng: number; geohash: string };
 
@@ -193,13 +195,15 @@ export type ServiceRequestDoc = {
   attachments: RequestAttachment[];
   selectedTechnicianId: string | null; // [server] set only when a technician is assigned
   acceptedQuotationId: string | null;
-  bookingId: string | null;
+  bookingId: string | null; // the current booking, while assigned
+  /** Mirror of bookings/{bookingId}.status, so lists don't need a second read. */
+  bookingStatus: BookingStatus | null;
   offerCount: number;
   quotationCount: number;
   cancellation: {
-    by: "customer" | "admin" | "system";
+    by: "customer" | "technician" | "admin" | "system";
     actorId: string | null;
-    reason: CancellationReason;
+    reason: CancellationReason | "booking_cancelled";
     note: string | null;
     at: Timestamp;
   } | null;
@@ -232,37 +236,53 @@ export type ServiceRequestEventDoc = {
   at: Timestamp;
 };
 
-/** serviceRequests/{requestId}/offers/{technicianId} — urgent acceptances & inspection-fee offers. */
+/** serviceRequests/{requestId}/offers/{technicianId} — one technician's response (urgent: accept / decline). */
 export type OfferDoc = {
   technicianId: string;
   status: OfferStatus;
-  inspectionFeeCents: LkrCents | null;
+  inspectionFeeLkr: Lkr | null; // shown to the customer before they confirm the visit
   etaMinutes: number | null;
   message: string | null;
+  bookingId: string | null;
   createdAt: Timestamp;
+  updatedAt: Timestamp;
 };
 
-/** quotations/{quotationId} — top level so technicians can list their own. */
+/** quotations/{quotationId} — top level so technicians can list their own. All [server]. */
 export type QuotationDoc = {
   requestId: string;
-  bookingId: string | null; // null for quote_online until accepted
+  bookingId: string;
   customerId: string;
   technicianId: string;
   mode: BookingMode;
   status: QuotationStatus;
-  version: number;
+  version: number; // 1, 2, 3 — a revision after rejection is a new version
   previousQuotationId: string | null;
-  lineItems: { description: string; quantity: number; unitPriceCents: LkrCents }[];
-  subtotalCents: LkrCents; // [server] computed, never trusted from client
-  totalCents: LkrCents; // [server]
-  notes: string | null;
+  inspectionFindings: string;
+  lineItems: {
+    kind: QuotationLineKind;
+    description: string;
+    quantity: number;
+    unitPriceLkr: Lkr;
+    amountLkr: Lkr; // quantity × unitPriceLkr
+  }[];
+  labourLkr: Lkr; // [server] computed from lineItems, never trusted from the client
+  materialsLkr: Lkr;
+  additionalLkr: Lkr;
+  inspectionFeeLkr: Lkr; // agreed when the customer confirmed the visit
+  totalLkr: Lkr; // labour + materials + additional + inspection fee
   estimatedDurationHours: number | null;
-  validUntil: Timestamp;
+  notes: string | null;
+  rejectionReason: string | null;
   createdAt: Timestamp;
   decidedAt: Timestamp | null;
 };
 
-/** bookings/{bookingId} — created when a technician is assigned. */
+/**
+ * bookings/{bookingId} — one technician's job for one request, created when a
+ * technician accepts. It becomes the confirmed job when the customer approves
+ * a quotation. All [server]; status changes are appended to ./statusHistory.
+ */
 export type BookingDoc = {
   requestId: string;
   customerId: string;
@@ -271,13 +291,32 @@ export type BookingDoc = {
   mode: BookingMode;
   categoryId: string;
   status: BookingStatus;
-  inspectionFeeCents: LkrCents | null;
+  /** Snapshot for lists. */
+  summary: { title: string; serviceName: string; city: string; district: District };
+  inspectionFeeLkr: Lkr; // 0 = free inspection
+  etaMinutes: number | null;
+  technicianMessage: string | null;
+  visitConfirmedAt: Timestamp | null;
+  enRouteAt: Timestamp | null;
+  arrivedAt: Timestamp | null;
+  currentQuotationId: string | null;
+  quotationCount: number;
   acceptedQuotationId: string | null;
-  scheduledFor: Timestamp | null; // null = as soon as possible (urgent)
-  conversationId: string;
+  agreedTotalLkr: Lkr | null;
+  confirmedAt: Timestamp | null;
+  workStartedAt: Timestamp | null;
+  completedAt: Timestamp | null;
+  cancellation: {
+    by: "customer" | "technician" | "admin";
+    actorId: string;
+    reason: string;
+    fromStatus: BookingStatus;
+    inspectionFeeDue: boolean;
+    at: Timestamp;
+  } | null;
+  conversationId: string | null; // messaging arrives in a later phase
   createdAt: Timestamp;
   updatedAt: Timestamp;
-  completedAt: Timestamp | null;
 };
 
 /** bookings/{bookingId}/statusHistory/{eventId} — append-only audit log. */

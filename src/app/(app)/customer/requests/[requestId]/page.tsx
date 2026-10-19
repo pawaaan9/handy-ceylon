@@ -1,4 +1,4 @@
-import { ArrowLeft, Film, MapPin, Phone, UserRound } from "lucide-react";
+import { ArrowLeft, Film, MapPin, Phone, Radio, UserRound } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,6 +8,8 @@ import { PageSkeleton, Panel } from "@/components/app-shell/page-header";
 import { FormAlert } from "@/components/forms/form-alert";
 import { addressLines, formatPhone } from "@/features/addresses/format";
 import { requireRole } from "@/features/auth/server/dal";
+import { BookingPanel } from "@/features/bookings/components/booking-panel";
+import { countAvailableTechnicians, getBookingView } from "@/features/bookings/server/repository";
 import { CancelRequestButton } from "@/features/requests/components/cancel-request-button";
 import { RequestStatusBadge } from "@/features/requests/components/request-status-badge";
 import { formatBytes, formatSchedule } from "@/features/requests/format";
@@ -48,6 +50,16 @@ async function RequestPageContent({ params, searchParams }: PageProps<"/customer
   const [request, { status }] = await Promise.all([getCustomerRequest(user.uid, id.data), searchParams]);
   if (!request) notFound();
   const message = typeof status === "string" ? messages[status] : undefined;
+  const waiting = request.status === "open" && request.mode === "urgent";
+  const [booking, availableNow] = await Promise.all([
+    request.bookingId ? getBookingView({ uid: user.uid, role: "customer" }, request.bookingId) : null,
+    waiting
+      ? countAvailableTechnicians(request.categoryId, request.district).catch((error) => {
+          console.error("[requests] availability count failed", error);
+          return null;
+        })
+      : null,
+  ]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -71,10 +83,35 @@ async function RequestPageContent({ params, searchParams }: PageProps<"/customer
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <RequestStatusBadge status={request.status} className="px-3 py-1 text-sm" />
+          {booking ? null : <RequestStatusBadge status={request.status} className="px-3 py-1 text-sm" />}
           {request.canCancel ? <CancelRequestButton requestId={request.id} /> : null}
         </div>
       </div>
+
+      {waiting ? (
+        <Panel>
+          <div className="flex gap-4">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-urgent-soft text-urgent">
+              <Radio className="size-5" aria-hidden="true" />
+            </span>
+            <div className="space-y-1 text-sm">
+              <p className="text-base font-semibold text-foreground">Waiting for a technician to accept</p>
+              <p className="text-muted-foreground">
+                {availableNow === null
+                  ? "Verified technicians who cover your area can see your request."
+                  : availableNow === 0
+                    ? `No verified ${request.categoryName.toLowerCase()} technicians covering ${request.district} are online right now. Your request stays open, and technicians will see it when they come online.`
+                    : `${availableNow} verified ${request.categoryName.toLowerCase()} technician${availableNow === 1 ? " is" : "s are"} online in ${request.district} now and can see your request.`}
+              </p>
+              <p className="text-muted-foreground">
+                Open until {formatDateTime(new Date(request.expiresAt))}. This page updates when you refresh it.
+              </p>
+            </div>
+          </div>
+        </Panel>
+      ) : null}
+
+      {booking ? <BookingPanel booking={booking} audience="customer" /> : null}
 
       <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
         <div className="space-y-5">
