@@ -66,7 +66,7 @@ npm run dev                     # http://localhost:3000
 | `npm test` | Unit tests (Vitest) |
 | `npm run test:emulators` | Repository + Security Rules tests against the Auth/Firestore/Storage emulators (Java 21+) |
 | `npm run seed:catalogue [-- --dry-run]` | Seed/refresh the service catalogue (idempotent, never deletes) |
-| `npm run admin:grant -- <email> [--revoke]` | Grant or revoke the administrator role |
+| `npm run admin:grant -- <email> [--revoke \| --create]` | Grant or revoke the administrator role, or create a dedicated admin login |
 | `npm run emulators` | Start the Firebase Emulator Suite |
 
 The emulators need Java 21+, e.g.
@@ -118,6 +118,13 @@ Never prefix Admin credentials with `NEXT_PUBLIC_` or commit `.env.local` / serv
 1. Sign up normally (email + password) and verify the email.
 2. On a trusted machine with `.env.local` credentials: `npm run admin:grant -- you@example.com`.
 3. Log in again — you land on `/admin/dashboard`. Revoke with `npm run admin:grant -- you@example.com --revoke`.
+
+For a dedicated admin login that isn't a customer account, create it directly (the password is
+read from a hidden prompt, or `ADMIN_PASSWORD`; never pass it as an argument):
+
+```bash
+npm run admin:grant -- admin@example.com --create --name "Handy Ceylon Admin"
+```
 
 There is no admin sign-up page and no client code can create an admin record (rules deny it).
 
