@@ -101,7 +101,7 @@ Never prefix Admin credentials with `NEXT_PUBLIC_` or commit `.env.local` / serv
    so reset/verification links use the branded pages (Firebase's default pages also work).
 6. Deploy rules and indexes:
    ```bash
-   cp .firebaserc.example .firebaserc   # set your project id
+   # .firebaserc points the CLI at the "handy-ceylon" project; use --project <id> for another one.
    firebase deploy --only firestore:rules,firestore:indexes,storage
    ```
 7. Seed the catalogue: `npm run seed:catalogue`.
