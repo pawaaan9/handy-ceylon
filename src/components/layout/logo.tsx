@@ -34,13 +34,16 @@ export function LogoMark({ className }: { className?: string }) {
 export function Logo({
   className,
   inverted = false,
+  href = "/",
 }: {
   className?: string;
   inverted?: boolean;
+  /** Signed-in areas point the logo at the user's own dashboard. */
+  href?: string;
 }) {
   return (
     <Link
-      href="/"
+      href={href}
       className={cn("inline-flex items-center gap-2.5 rounded-md", className)}
       aria-label={`${siteConfig.name} home`}
     >

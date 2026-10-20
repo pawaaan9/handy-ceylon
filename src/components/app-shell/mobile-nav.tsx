@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 import { AppNav } from "./app-nav";
-import type { NavItem } from "./nav-config";
+import type { NavBadge, NavItem } from "./nav-config";
 
-export function MobileNav({ items }: { items: NavItem[] }) {
+export function MobileNav({ items, badges }: { items: NavItem[]; badges?: Partial<Record<NavBadge, number>> }) {
   const [open, setOpen] = useState(false);
   if (items.length === 0) return null;
   return (
@@ -24,8 +24,8 @@ export function MobileNav({ items }: { items: NavItem[] }) {
           <SheetTitle>Menu</SheetTitle>
           <SheetDescription className="sr-only">Account navigation</SheetDescription>
         </SheetHeader>
-        <div className="px-3">
-          <AppNav items={items} tone="light" onNavigate={() => setOpen(false)} />
+        <div className="overflow-y-auto px-3 pb-6">
+          <AppNav items={items} tone="light" badges={badges} onNavigate={() => setOpen(false)} />
         </div>
       </SheetContent>
     </Sheet>

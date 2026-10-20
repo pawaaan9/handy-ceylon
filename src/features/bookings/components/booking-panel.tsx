@@ -31,7 +31,8 @@ export async function BookingPanel({
   viewerUid,
 }: {
   booking: BookingView;
-  audience: "customer" | "technician";
+  /** Admins see everything read-only, plus cancellation when the state machine allows it. */
+  audience: "customer" | "technician" | "admin";
   viewerUid: string;
 }) {
   const messages = booking.conversationId ? await listMessages(viewerUid, booking.conversationId) : null;
@@ -48,7 +49,7 @@ export async function BookingPanel({
         </div>
         <div className="mt-5 space-y-5">
           <BookingProgress mode={booking.mode} status={booking.status} cancelledFrom={booking.cancellation?.fromStatus} />
-          <NextSteps status={booking.status} audience={audience} mode={booking.mode} />
+          {audience === "admin" ? null : <NextSteps status={booking.status} audience={audience} mode={booking.mode} />}
           {booking.cancellation ? (
             <FormAlert tone="info" title={`Cancelled by ${roleNames[booking.cancellation.by]}`}>
               <p>{booking.cancellation.reason}</p>
@@ -90,12 +91,12 @@ export async function BookingPanel({
           {booking.technicianMessage ? (
             <p className="border-l-2 pl-3 text-sm text-muted-foreground italic">“{booking.technicianMessage}”</p>
           ) : null}
-          <BookingActions booking={booking} audience={audience} />
+          <BookingActions booking={booking} audience={audience === "technician" ? "technician" : "customer"} />
         </div>
       </Panel>
 
-      {audience === "customer" && booking.technician ? (
-        <Panel title="Your technician">
+      {audience !== "technician" && booking.technician ? (
+        <Panel title={audience === "admin" ? "Technician" : "Your technician"}>
           <TechnicianCard technician={booking.technician} />
         </Panel>
       ) : null}
@@ -126,7 +127,7 @@ export async function BookingPanel({
         <Panel title="Quotations" description="Every version is kept, including any accepted earlier.">
           <div className="space-y-4">
             {booking.quotations.map((q) => (
-              <QuotationCard key={q.id} quotation={q} audience={audience} />
+              <QuotationCard key={q.id} quotation={q} audience={audience === "technician" ? "technician" : "customer"} />
             ))}
           </div>
         </Panel>

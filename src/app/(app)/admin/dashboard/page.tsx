@@ -6,6 +6,8 @@ import { Suspense } from "react";
 import { SectionTitle, StatTile, WelcomeBanner } from "@/components/app-shell/dashboard-kit";
 import { Button } from "@/components/ui/button";
 import { RefreshCatalogueButton } from "@/features/admin/components/refresh-catalogue-button";
+import { getAdminOverview } from "@/features/admin/server/queries";
+import { formatLkr } from "@/lib/format";
 import { requireRole } from "@/features/auth/server/dal";
 import { loadActiveCatalogue } from "@/features/catalogue/server/repository";
 import { countApplicationsByStatus } from "@/features/technicians/server/applications";
@@ -24,8 +26,12 @@ export default function AdminDashboardPage() {
 
 async function AdminDashboardPageContent() {
   await requireRole(["admin"], { from: "/admin/dashboard" });
-  const [counts, catalogue] = await Promise.all([
+  const [counts, overview, catalogue] = await Promise.all([
     countApplicationsByStatus(),
+    getAdminOverview().catch((error) => {
+      console.error("[admin] overview failed", error);
+      return null;
+    }),
     // Uncached on purpose: admins see what Firestore holds right now.
     loadActiveCatalogue().catch(() => null),
   ]);
@@ -51,6 +57,26 @@ async function AdminDashboardPageContent() {
         }
       />
 
+      {overview ? (
+        <section className="space-y-4">
+          <SectionTitle>Platform</SectionTitle>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <LinkedStat href="/admin/requests?status=open" label="Open requests" value={overview.openRequests} tone="urgent" />
+            <LinkedStat href="/admin/jobs?status=active" label="Active jobs" value={overview.activeJobs} tone="primary" />
+            <LinkedStat href="/admin/jobs?status=completed" label="Completed jobs" value={overview.completedJobs} tone="leaf" />
+            <LinkedStat
+              href="/admin/payments?status=due"
+              label={`Payments due (${overview.paymentsDue})`}
+              value={formatLkr(overview.paymentsDueLkr)}
+              tone="sand"
+            />
+            <LinkedStat href="/admin/customers" label="Customers" value={overview.customers} tone="primary" />
+            <LinkedStat href="/admin/technicians" label="Technicians" value={overview.technicians} tone="navy" />
+            <LinkedStat href="/admin/technicians?status=online" label="Technicians online now" value={overview.techniciansOnline} tone="leaf" />
+          </div>
+        </section>
+      ) : null}
+
       <section className="space-y-4">
         <SectionTitle>Technician applications</SectionTitle>
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -64,8 +90,8 @@ async function AdminDashboardPageContent() {
       <section className="rounded-2xl border bg-card p-6">
         <SectionTitle
           action={
-            <Link href="/services" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-              View public catalogue <ArrowRight className="size-4" aria-hidden="true" />
+            <Link href="/admin/catalogue" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+              Manage catalogue <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
           }
         >
@@ -108,5 +134,13 @@ async function AdminDashboardPageContent() {
         </div>
       </section>
     </div>
+  );
+}
+
+function LinkedStat({ href, ...tile }: { href: string } & React.ComponentProps<typeof StatTile>) {
+  return (
+    <Link href={href} className="rounded-2xl transition-shadow hover:shadow-md focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
+      <StatTile {...tile} />
+    </Link>
   );
 }

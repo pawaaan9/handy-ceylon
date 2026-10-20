@@ -251,6 +251,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "payments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalDueLkr",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

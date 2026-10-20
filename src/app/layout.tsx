@@ -11,6 +11,10 @@ const googleSans = Google_Sans({
   subsets: ["latin"],
   axes: ["opsz"],
   display: "swap",
+  // Next.js has no size metrics for Google Sans, so it can't generate an adjusted
+  // fallback; use the system UI font while it loads instead of warning on every build.
+  adjustFontFallback: false,
+  fallback: ["system-ui", "sans-serif"],
 });
 
 export const metadata: Metadata = {
@@ -35,7 +39,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en-LK" className={`${googleSans.variable} h-full antialiased`}>
+    // globals.css enables smooth scrolling; this tells Next.js to pause it during route changes.
+    <html lang="en-LK" data-scroll-behavior="smooth" className={`${googleSans.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">{children}</body>
     </html>
   );
