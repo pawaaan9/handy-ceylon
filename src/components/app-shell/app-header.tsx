@@ -18,16 +18,17 @@ import { SidebarAccount, type SidebarAccountInfo } from "./sidebar-account";
 import { UserMenu } from "./user-menu";
 
 /**
- * Administrators have every page in the sidebar, so they get no account popup:
- * their account and Log out live at the bottom of the menu instead.
+ * Every page is in the sidebar, so there is no account popup: the signed-in
+ * account and Log out live at the bottom of the menu. (An account that hasn't
+ * finished setup has no role, no sidebar, and keeps the popup.)
  */
-function adminAccount(user: CurrentUser | null): SidebarAccountInfo | undefined {
-  if (user?.role !== "admin") return undefined;
+function sidebarAccount(user: CurrentUser | null): SidebarAccountInfo | undefined {
+  if (!user?.role) return undefined;
   return {
     name: user.displayName,
     contact: user.email ?? formatLocalMobile(user.phoneNumber),
     photoURL: user.photoURL,
-    roleLabel: roleLabels.admin,
+    roleLabel: roleLabels[user.role],
   };
 }
 
@@ -47,7 +48,7 @@ export async function AppSidebar() {
   const user = await getCurrentUser();
   const items = user?.role ? navByRole[user.role] : [];
   const badges = await navBadges(user);
-  const account = adminAccount(user);
+  const account = sidebarAccount(user);
   return (
     <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-hidden bg-navy text-navy-foreground lg:flex">
       <LinePattern className="text-white/[0.04]" />
@@ -60,11 +61,6 @@ export async function AppSidebar() {
       <div className="relative flex-1 overflow-y-auto px-3 py-4">
         <AppNav items={items} tone="dark" badges={badges} />
       </div>
-      {account ? (
-        <div className="relative">
-          <SidebarAccount account={account} tone="dark" />
-        </div>
-      ) : null}
       {user?.role === "customer" ? (
         <div className="relative m-3 rounded-2xl bg-white/[0.07] p-4">
           <LifeBuoy className="size-5 text-urgent" aria-hidden="true" />
@@ -78,6 +74,11 @@ export async function AppSidebar() {
           </Button>
         </div>
       ) : null}
+      {account ? (
+        <div className="relative">
+          <SidebarAccount account={account} tone="dark" />
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -86,12 +87,12 @@ export function AppSidebarSkeleton() {
   return <div className="hidden h-dvh w-64 shrink-0 bg-navy lg:block" aria-hidden="true" />;
 }
 
-/** Top bar: mobile menu + logo on small screens, account menu everywhere. */
+/** Top bar: mobile menu + logo on small screens (hidden on desktop for signed-in accounts with a sidebar). */
 export async function AppHeader() {
   const user = await getCurrentUser();
   const items = user?.role ? navByRole[user.role] : [];
   const badges = await navBadges(user);
-  const account = adminAccount(user);
+  const account = sidebarAccount(user);
   return (
     <header
       className={`sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6 lg:px-8${account ? " lg:hidden" : ""}`}
