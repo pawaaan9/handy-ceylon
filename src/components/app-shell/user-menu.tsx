@@ -2,6 +2,7 @@
 
 import { ChevronDown, LogOut } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useSignOut } from "@/features/auth/components/sign-out-button";
+import { LogoutDialog } from "@/features/auth/components/logout-dialog";
 import { initials } from "@/lib/format";
 
 import type { NavItem } from "./nav-config";
@@ -33,8 +34,9 @@ export function UserMenu({
   roleLabel: string;
   items: NavItem[];
 }) {
-  const { signOut, pending } = useSignOut();
+  const [confirming, setConfirming] = useState(false);
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="lg" className="h-10 gap-2 px-1.5" aria-label="Account menu">
@@ -67,11 +69,13 @@ export function UserMenu({
           </>
         ) : null}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={signOut} disabled={pending}>
+        <DropdownMenuItem onSelect={() => setConfirming(true)}>
           <LogOut aria-hidden="true" />
-          {pending ? "Logging out…" : "Log out"}
+          Log out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <LogoutDialog open={confirming} onOpenChange={setConfirming} />
+    </>
   );
 }

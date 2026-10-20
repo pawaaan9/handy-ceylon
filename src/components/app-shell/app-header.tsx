@@ -14,7 +14,22 @@ import { formatLocalMobile } from "@/lib/format";
 import { AppNav } from "./app-nav";
 import { MobileNav } from "./mobile-nav";
 import { navByRole, roleLabels, type NavBadge } from "./nav-config";
+import { SidebarAccount, type SidebarAccountInfo } from "./sidebar-account";
 import { UserMenu } from "./user-menu";
+
+/**
+ * Administrators have every page in the sidebar, so they get no account popup:
+ * their account and Log out live at the bottom of the menu instead.
+ */
+function adminAccount(user: CurrentUser | null): SidebarAccountInfo | undefined {
+  if (user?.role !== "admin") return undefined;
+  return {
+    name: user.displayName,
+    contact: user.email ?? formatLocalMobile(user.phoneNumber),
+    photoURL: user.photoURL,
+    roleLabel: roleLabels.admin,
+  };
+}
 
 /** Live counts shown beside menu items (admins only). Never blocks the menu if it fails. */
 async function navBadges(user: CurrentUser | null): Promise<Partial<Record<NavBadge, number>>> {
@@ -32,6 +47,7 @@ export async function AppSidebar() {
   const user = await getCurrentUser();
   const items = user?.role ? navByRole[user.role] : [];
   const badges = await navBadges(user);
+  const account = adminAccount(user);
   return (
     <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-hidden bg-navy text-navy-foreground lg:flex">
       <LinePattern className="text-white/[0.04]" />
@@ -44,6 +60,11 @@ export async function AppSidebar() {
       <div className="relative flex-1 overflow-y-auto px-3 py-4">
         <AppNav items={items} tone="dark" badges={badges} />
       </div>
+      {account ? (
+        <div className="relative">
+          <SidebarAccount account={account} tone="dark" />
+        </div>
+      ) : null}
       {user?.role === "customer" ? (
         <div className="relative m-3 rounded-2xl bg-white/[0.07] p-4">
           <LifeBuoy className="size-5 text-urgent" aria-hidden="true" />
@@ -70,15 +91,18 @@ export async function AppHeader() {
   const user = await getCurrentUser();
   const items = user?.role ? navByRole[user.role] : [];
   const badges = await navBadges(user);
+  const account = adminAccount(user);
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6 lg:px-8">
+    <header
+      className={`sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6 lg:px-8${account ? " lg:hidden" : ""}`}
+    >
       <div className="flex items-center gap-3">
-        <MobileNav items={items} badges={badges} />
+        <MobileNav items={items} badges={badges} account={account} />
         <div className="lg:hidden">
           <Logo href={user?.role ? roleHomes[user.role] : "/"} />
         </div>
       </div>
-      {user ? (
+      {account ? null : user ? (
         <UserMenu
           name={user.displayName}
           contact={user.email ?? formatLocalMobile(user.phoneNumber)}

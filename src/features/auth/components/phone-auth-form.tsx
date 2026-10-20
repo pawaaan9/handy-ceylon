@@ -108,18 +108,23 @@ export function PhoneAuthForm({ next, remember = false }: { next: string | null;
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
                   <FieldLabel htmlFor="mobile">Mobile number</FieldLabel>
-                  <div className="flex">
-                    <span className="inline-flex items-center rounded-l-lg border border-r-0 bg-muted px-3 text-sm font-medium text-muted-foreground">
-                      🇱🇰 +94
+                  <div className="flex items-stretch">
+                    {/* Fixed Sri Lanka prefix: kept on one line and not selectable, so it reads as part of the field. */}
+                    <span
+                      title="Sri Lanka (+94)"
+                      className="inline-flex shrink-0 items-center gap-2 rounded-l-lg border border-r-0 border-input bg-muted px-3.5 text-sm font-semibold whitespace-nowrap text-foreground select-none"
+                    >
+                      <span aria-hidden="true" className="text-lg leading-none">🇱🇰</span>
+                      <span>+94</span>
                     </span>
                     <Input
                       {...field}
                       id="mobile"
                       type="tel"
                       inputMode="tel"
-                      autoComplete="tel"
+                      autoComplete="tel-national"
                       placeholder="77 123 4567"
-                      className="rounded-l-none"
+                      className="h-10 min-w-0 flex-1 rounded-l-none"
                       aria-invalid={fieldState.invalid}
                       aria-describedby="mobile-hint"
                     />
